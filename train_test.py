@@ -33,19 +33,21 @@ config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
 file_path = str(pathlib.Path().absolute())
+dataset_path = '/datasets/mixed_data'
+final_path = file_path + dataset_path
 
 # Set some parameters
 IMG_WIDTH = 640
 IMG_HEIGHT = 480
 IMG_CHANNELS = 1
 
-TRAIN_PATH_IMAGES = file_path + '/datasets/mini_data/train/images/'
-TEST_PATH_IMAGES = file_path + '/datasets/mini_data/test/images/'
-VALI_PATH_IMAGES = file_path + '/datasets/mini_data/validation/images/'
+TRAIN_PATH_IMAGES = final_path + '/train/images/'
+TEST_PATH_IMAGES = final_path + '/test/images/'
+VALI_PATH_IMAGES = final_path + '/validation/images/'
 
-TRAIN_PATH_MASKS = file_path + '/datasets/mini_data/train/masks/'
-TEST_PATH_MASKS = file_path + '/datasets/mini_data/test/masks/'
-VALI_PATH_MASKS = file_path + '/datasets/mini_data/validation/masks/'
+TRAIN_PATH_MASKS = final_path + '/train/masks/'
+TEST_PATH_MASKS = final_path + '/test/masks/'
+VALI_PATH_MASKS = final_path + '/validation/masks/'
 
 # Get train and test IDs
 train_ids = next(os.walk(TRAIN_PATH_IMAGES))[2]
