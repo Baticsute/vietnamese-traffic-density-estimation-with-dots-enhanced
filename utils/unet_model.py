@@ -7,11 +7,25 @@ from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras import backend as K
 
-from utils import data_loader
+import tensorflow as tf
 
+K.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
-def get_unet_model(IMG_HEIGHT=480, IMG_WIDTH=640, IMG_CHANNELS=1):
-    inputs = Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
+VALIDATION_SIZE_SPLIT = 0.05
+
+smooth = 1.
+def dice_coef(y_true, y_pred):
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+
+def dice_coef_loss(y_true, y_pred):
+    y_true = tf.cast(y_true, tf.float32)
+    return -dice_coef(y_true, y_pred)
+
+def get_unet_model(img_h=96, img_w=128, img_ch=1):
+    inputs = Input((img_h, img_w, img_ch))
     s = Lambda(lambda x: x / 255)(inputs)
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
@@ -83,48 +97,52 @@ def get_unet_model(IMG_HEIGHT=480, IMG_WIDTH=640, IMG_CHANNELS=1):
     outputs = Conv2D(1, (1, 1), activation='sigmoid')(c9)
 
     model = Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef])
 
     return model
 
 
-def get_early_stopping(patience=10, verbose=True, model_checkpoint_path='model_unet_checkpoint.h5'):
-    earlystopper = EarlyStopping(patience=patience, verbose=verbose)
-    checkpointer = ModelCheckpoint(model_checkpoint_path, verbose=verbose, save_best_only=True)
+def get_early_stopping(patience=10, verbose=True):
+    return EarlyStopping(patience=patience, verbose=verbose)
 
-    return {
-        'early_stop': earlystopper,
-        'check_point': checkpointer
-    }
+def get_model_checkpoint(verbose=True, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5'):
+    return ModelCheckpoint(model_checkpoint_path, verbose=verbose, monitor='val_loss', save_best_only=True)
 
-def train_model(model, data, batch_size=64, n_epochs=100):
+def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100):
+    model_checkpoint = get_model_checkpoint()
+    early_stopping = get_early_stopping()
 
-    callbacks_obj = get_early_stopping(10, True, 'model_unet_checkpoint.h5')
+    model.summary()
 
-    X_train = data['train_data']
-    Y_train = data['train_label_data']
+    X_train = train_data['train_data']
+    Y_train = train_data['train_label_data']
 
     validation_data = None
-    if (data['val_data'] != None):
-        validation_data = (data['val_data'], data['val_label_data'])
+    if (valid_data != None):
+        validation_data = (valid_data['val_data'], valid_data['val_label_data'])
 
     if (validation_data != None):
         results = model.fit(
             X_train,
             Y_train,
             validation_data=validation_data,
-            batch_size=128,
-            epochs=200,
-            callbacks=[callbacks_obj['early_stop'], callbacks_obj['check_point']]
+            batch_size=batch_size,
+            epochs=n_epochs,
+            callbacks=[early_stopping, model_checkpoint]
         )
     else:
         results = model.fit(
             X_train,
             Y_train,
-            validation_split=0.1,
+            validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
-            callbacks=[callbacks_obj['early_stop'], callbacks_obj['check_point']]
+            callbacks=[early_stopping, model_checkpoint]
         )
 
     return results
+
+def model_predict(test_data, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5'):
+    # Predict on train, val and test
+    model = load_model(model_checkpoint_path)
+    preds_test = model.predict(test_data, verbose=1)

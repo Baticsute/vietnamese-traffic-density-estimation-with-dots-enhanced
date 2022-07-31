@@ -24,6 +24,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras import backend as K
 
 from utils import data_loader
+from utils import unet_model
 
 import tensorflow as tf
 
@@ -34,9 +35,12 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
-train_data = data_loader.get_train_data('mixed_data')
-test_data = data_loader.get_test_data('mixed_data')
-valid_data = data_loader.get_validation_data('mixed_data')
+
+train_data = data_loader.load_train_data('final_data')
+test_data = data_loader.load_test_data('final_data')
+
+unet = unet_model.get_unet_model(img_h=96, img_w=128, img_ch=1)
+unet_model.train_model(model=unet, train_data=train_data, batch_size=8, n_epochs=10)
 
 # Check if training data looks all right
 # ix = random.randint(0, len(train_ids))
