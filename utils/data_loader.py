@@ -26,6 +26,22 @@ TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train/masks/'
 TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
+def preprocess_img(img):
+    """
+    Preprocessing for the image
+    z-score normalize
+    """
+    return (img - img.mean()) / img.std()
+
+def preprocess_label(mask):
+    """
+    Predict whole tumor. If you want to predict tumor sections, then
+    just comment this out.
+    """
+    mask[mask > 0] = 1.0
+
+    return mask
+
 
 def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=96, img_w=128, img_ch=1):
     sys.stdout.flush()
@@ -36,14 +52,14 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
     mask_files_type = 'Y_' + data_type
 
     image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.uint8)
-    mask_data = np.zeros((len(file_ids), img_h, img_w, 1), dtype=np.bool)
+    mask_data = np.zeros((len(file_ids), img_h, img_w, 1))
     mask_sizes = []
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):
         # Read image files iteratively
         img = imread(image_path + id_)[:, :, :img_ch]
         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
-        image_data[n] = img
+        image_data[n] = preprocess_img(img)
 
     save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
     np.save(save_path, image_data)
@@ -52,7 +68,7 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
         # Read corresponding mask files iteratively
         mask_file_name = os.path.splitext(id_)[0] + '.png'
-        mask = np.zeros((img_h, img_w, 1), dtype=np.bool)
+        mask = np.zeros((img_h, img_w, 1))
 
         mask_ = imread(mask_path + mask_file_name)
         mask_sizes.append([mask.shape[0], mask.shape[1]])
@@ -60,7 +76,7 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
         mask_ = np.expand_dims(resize(mask_, (img_h, img_w), mode='constant', preserve_range=True), axis=-1)
 
         mask = np.maximum(mask, mask_)
-        mask_data[n] = mask
+        mask_data[n] = preprocess_label(mask)
 
     save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
     np.save(save_path, mask_data)

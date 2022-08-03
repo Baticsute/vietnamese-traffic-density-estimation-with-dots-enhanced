@@ -13,16 +13,59 @@ K.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.05
 
-smooth = 1.
-def dice_coef(y_true, y_pred):
-    y_true_f = K.flatten(y_true)
-    y_pred_f = K.flatten(y_pred)
-    intersection = K.sum(y_true_f * y_pred_f)
-    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
+    """
+    Sorenson Dice
+    \frac{  2 \times \left | T \right | \cap \left | P \right |}{ \left | T \right | +  \left | P \right |  }
+    where T is ground truth mask and P is the prediction mask
+    """
+    prediction = K.backend.round(prediction)  # Round to 0 or 1
 
-def dice_coef_loss(y_true, y_pred):
-    y_true = tf.cast(y_true, tf.float32)
-    return -dice_coef(y_true, y_pred)
+    intersection = tf.reduce_sum(target * prediction, axis=axis)
+    union = tf.reduce_sum(target + prediction, axis=axis)
+    numerator = tf.constant(2.) * intersection + smooth
+    denominator = union + smooth
+    coef = numerator / denominator
+
+    return tf.reduce_mean(coef)
+
+def dice_coef_loss(target, prediction, axis=(0, 1), smooth=0.0001):
+    """
+    Sorenson (Soft) Dice loss
+    Using -log(Dice) as the loss since it is better behaved.
+    Also, the log allows avoidance of the division which
+    can help prevent underflow when the numbers are very small.
+    """
+    intersection = tf.reduce_sum(prediction * target, axis=axis)
+    p = tf.reduce_sum(prediction, axis=axis)
+    t = tf.reduce_sum(target, axis=axis)
+    numerator = tf.reduce_mean(intersection + smooth)
+    denominator = tf.reduce_mean(t + p + smooth)
+    dice_loss = -tf.math.log(2.*numerator) + tf.math.log(denominator)
+
+    return dice_loss
+
+def soft_dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
+    """
+    Sorenson (Soft) Dice  - Don't round the predictions
+    \frac{  2 \times \left | T \right | \cap \left | P \right |}{ \left | T \right | +  \left | P \right |  }
+    where T is ground truth mask and P is the prediction mask
+    """
+
+    intersection = tf.reduce_sum(target * prediction, axis=axis)
+    union = tf.reduce_sum(target + prediction, axis=axis)
+    numerator = tf.constant(2.) * intersection + smooth
+    denominator = union + smooth
+    coef = numerator / denominator
+
+    return tf.reduce_mean(coef)
+
+def combined_dice_ce_loss(target, prediction, weight_dice_loss, axis=(0, 1), smooth=0.0001):
+    """
+    Combined Dice and Binary Cross Entropy Loss
+    """
+    return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
+        (1 - weight_dice_loss) * K.losses.binary_crossentropy(target, prediction)
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch))
@@ -97,7 +140,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     outputs = Conv2D(1, (1, 1), activation='sigmoid')(c9)
 
     model = Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef])
+    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef, soft_dice_coef])
 
     return model
 
