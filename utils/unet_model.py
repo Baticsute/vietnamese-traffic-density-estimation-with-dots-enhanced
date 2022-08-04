@@ -4,14 +4,16 @@ from tensorflow.keras.layers import Dropout, Lambda
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import backend as K
 
 import tensorflow as tf
+from tqdm import tqdm
 
 K.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.05
+
 
 def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
     """
@@ -19,7 +21,7 @@ def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
     \frac{  2 \times \left | T \right | \cap \left | P \right |}{ \left | T \right | +  \left | P \right |  }
     where T is ground truth mask and P is the prediction mask
     """
-    prediction = K.backend.round(prediction)  # Round to 0 or 1
+    prediction = tf.round(prediction)  # Round to 0 or 1
 
     intersection = tf.reduce_sum(target * prediction, axis=axis)
     union = tf.reduce_sum(target + prediction, axis=axis)
@@ -28,6 +30,7 @@ def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
     coef = numerator / denominator
 
     return tf.reduce_mean(coef)
+
 
 def dice_coef_loss(target, prediction, axis=(0, 1), smooth=0.0001):
     """
@@ -41,9 +44,10 @@ def dice_coef_loss(target, prediction, axis=(0, 1), smooth=0.0001):
     t = tf.reduce_sum(target, axis=axis)
     numerator = tf.reduce_mean(intersection + smooth)
     denominator = tf.reduce_mean(t + p + smooth)
-    dice_loss = -tf.math.log(2.*numerator) + tf.math.log(denominator)
+    dice_loss = -tf.math.log(2. * numerator) + tf.math.log(denominator)
 
     return dice_loss
+
 
 def soft_dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
     """
@@ -60,16 +64,19 @@ def soft_dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
 
     return tf.reduce_mean(coef)
 
-def combined_dice_ce_loss(target, prediction, weight_dice_loss, axis=(0, 1), smooth=0.0001):
+
+def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1), smooth=0.0001):
     """
     Combined Dice and Binary Cross Entropy Loss
     """
+    bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
-        (1 - weight_dice_loss) * K.losses.binary_crossentropy(target, prediction)
+           (1 - weight_dice_loss) * bce(target, prediction)
+
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch))
-    s = Lambda(lambda x: x / 255)(inputs)
+    s = inputs
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
     c1 = BatchNormalization()(c1)
@@ -146,14 +153,21 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
 
 
 def get_early_stopping(patience=10, verbose=True):
-    return EarlyStopping(patience=patience, verbose=verbose)
+    return EarlyStopping(patience=patience, verbose=verbose, restore_best_weights=True)
+
 
 def get_model_checkpoint(verbose=True, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5'):
     return ModelCheckpoint(model_checkpoint_path, verbose=verbose, monitor='val_loss', save_best_only=True)
 
+
+def get_model_logging(model_log_dir='./logs'):
+    return TensorBoard(log_dir=model_log_dir, write_graph=True, write_images=True)
+
+
 def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100):
     model_checkpoint = get_model_checkpoint()
     early_stopping = get_early_stopping()
+    tensorboards = get_model_logging()
 
     model.summary()
 
@@ -171,7 +185,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100)
             validation_data=validation_data,
             batch_size=batch_size,
             epochs=n_epochs,
-            callbacks=[early_stopping, model_checkpoint]
+            callbacks=[early_stopping, model_checkpoint, tensorboards]
         )
     else:
         results = model.fit(
@@ -180,12 +194,63 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100)
             validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
-            callbacks=[early_stopping, model_checkpoint]
+            callbacks=[early_stopping, model_checkpoint, tensorboards]
         )
 
     return results
 
-def model_predict(test_data, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5'):
-    # Predict on train, val and test
-    model = load_model(model_checkpoint_path)
-    preds_test = model.predict(test_data, verbose=1)
+
+def load_pretrained_model(model_filename):
+    """
+    Load a model from Keras file
+    """
+
+    custom_objects = {
+        "combined_dice_ce_loss": combined_dice_ce_loss,
+        "dice_coef_loss": dice_coef_loss,
+        "dice_coef": dice_coef,
+        "soft_dice_coef": soft_dice_coef
+    }
+    model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+
+    model.compile(
+        optimizer='adam',
+        loss=dice_coef_loss,
+        metrics=['acc', combined_dice_ce_loss, dice_coef_loss, dice_coef, soft_dice_coef]
+    )
+
+    return model
+
+
+def evaluate_model(model_filename, test_data):
+    """
+    Evaluate the best model on the validation dataset
+    """
+
+    X_test = test_data['test_data']
+    Y_test = test_data['test_label_data']
+
+    custom_objects = {
+        "combined_dice_ce_loss": combined_dice_ce_loss,
+        "dice_coef_loss": dice_coef_loss,
+        "dice_coef": dice_coef,
+        "soft_dice_coef": soft_dice_coef
+    }
+
+    model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+    model.compile(
+        optimizer='adam',
+        loss=dice_coef_loss,
+        metrics=['acc', combined_dice_ce_loss, dice_coef_loss, dice_coef, soft_dice_coef]
+    )
+
+    print("Evaluating model on test dataset. Please wait...")
+    metrics = model.evaluate(
+        x=X_test,
+        y=Y_test,
+        batch_size=8,
+        verbose=1
+    )
+
+    for idx, metric in enumerate(metrics):
+        print("Test dataset {} = {:.2f}".format(model.metrics_names[idx], metric))

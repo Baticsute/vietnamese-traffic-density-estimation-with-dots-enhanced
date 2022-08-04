@@ -51,8 +51,8 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
     image_files_type = 'X_' + data_type
     mask_files_type = 'Y_' + data_type
 
-    image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.uint8)
-    mask_data = np.zeros((len(file_ids), img_h, img_w, 1))
+    image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.float32)
+    mask_data = np.zeros((len(file_ids), img_h, img_w, 1), dtype=np.float32)
     mask_sizes = []
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):

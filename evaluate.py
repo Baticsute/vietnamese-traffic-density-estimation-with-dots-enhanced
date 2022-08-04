@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from utils import data_loader
 from utils import unet_model
 
@@ -10,8 +12,7 @@ config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
 
-train_data = data_loader.load_train_data('final_data', is_dots_expanded=False)
+# train_data = data_loader.load_train_data('final_data', is_dots_expanded=False)
 test_data = data_loader.load_test_data('final_data', is_dots_expanded=False)
-#
-unet = unet_model.get_unet_model(img_h=192, img_w=256, img_ch=1)
-unet_model.train_model(model=unet, train_data=train_data, batch_size=8, n_epochs=100)
+
+unet_model.evaluate_model('./model_checkpoints/model_unet_checkpoint.h5', test_data)
