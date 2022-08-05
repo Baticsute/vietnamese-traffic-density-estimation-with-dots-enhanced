@@ -1,16 +1,15 @@
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import Dropout, Lambda
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import backend as K
 
 import tensorflow as tf
-from tqdm import tqdm
 
-K.set_image_data_format('channels_last')  # TF dimension ordering in this code
+tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.05
 
@@ -72,6 +71,87 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1)
     bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
     return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
            (1 - weight_dice_loss) * bce(target, prediction)
+
+
+def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
+    concat_axis = -1
+    if tf.keras.backend.image_data_format() == 'channels_last':
+        concat_axis = -1
+    else:
+        concat_axis = 1
+
+    params = dict(
+        kernel_size=(3, 3),
+        activation="relu",
+        padding="same",
+        kernel_initializer="he_uniform"
+    )
+
+    params_trans = dict(
+        kernel_size=(2, 2),
+        strides=(2, 2),
+        padding="same"
+    )
+
+    inputs = Input((img_h, img_w, img_ch))
+
+    encodeA = Conv2D(name="encodeAa", filters=n_feature_maps, **params)(inputs)
+    encodeA = Conv2D(name="encodeAb", filters=n_feature_maps, **params)(encodeA)
+    poolA = MaxPooling2D(name="poolA", pool_size=(2, 2))(encodeA)
+
+    encodeB = Conv2D(name="encodeBa", filters=n_feature_maps * 2, **params)(poolA)
+    encodeB = Conv2D(name="encodeBb", filters=n_feature_maps * 2, **params)(encodeB)
+    poolB = MaxPooling2D(name="poolB", pool_size=(2, 2))(encodeB)
+
+    encodeC = Conv2D(name="encodeCa", filters=n_feature_maps * 4, **params)(poolB)
+    encodeC = SpatialDropout2D(0.2)(encodeC)
+    encodeC = Conv2D(name="encodeCb", filters=n_feature_maps * 4, **params)(encodeC)
+    poolC = MaxPooling2D(name="poolC", pool_size=(2, 2))(encodeC)
+
+    encodeD = Conv2D(name="encodeDa", filters=n_feature_maps * 8, **params)(poolC)
+    encodeD = SpatialDropout2D(0.2)(encodeD)
+    encodeD = Conv2D(name="encodeDb", filters=n_feature_maps * 8, **params)(encodeD)
+    poolD = MaxPooling2D(name="poolD", pool_size=(2, 2))(encodeD)
+
+    encodeE = Conv2D(name="encodeEa", filters=n_feature_maps * 16, **params)(poolD)
+    encodeE = Conv2D(name="encodeEb", filters=n_feature_maps * 16, **params)(encodeE)
+    up = Conv2DTranspose(name="transconvE", filters=n_feature_maps * 8, **params_trans)(encodeE)
+
+    concatD = concatenate([up, encodeD], axis=concat_axis, name="concatD")
+
+    decodeC = Conv2D(name="decodeCa", filters=n_feature_maps * 8, **params)(concatD)
+    decodeC = Conv2D(name="decodeCb", filters=n_feature_maps * 8, **params)(decodeC)
+
+    up = Conv2DTranspose(name="transconvC", filters=n_feature_maps * 4, **params_trans)(decodeC)
+
+    concatC = concatenate([up, encodeC], axis=concat_axis, name="concatC")
+
+    decodeB = Conv2D(name="decodeBa", filters=n_feature_maps * 4, **params)(concatC)
+    decodeB = Conv2D(name="decodeBb", filters=n_feature_maps * 4, **params)(decodeB)
+
+    up = Conv2DTranspose(name="transconvB", filters=n_feature_maps * 2, **params_trans)(decodeB)
+    concatB = concatenate([up, encodeB], axis=concat_axis, name="concatB")
+
+    decodeA = Conv2D(name="decodeAa", filters=n_feature_maps * 2, **params)(concatB)
+    decodeA = Conv2D(name="decodeAb", filters=n_feature_maps * 2, **params)(decodeA)
+
+    up = Conv2DTranspose(name="transconvA", filters=n_feature_maps, **params_trans)(decodeA)
+
+    concatA = concatenate([up, encodeA], axis=concat_axis, name="concatA")
+
+    convOut = Conv2D(name="convOuta", filters=n_feature_maps, **params)(concatA)
+    convOut = Conv2D(name="convOutb", filters=n_feature_maps, **params)(convOut)
+
+    prediction = Conv2D(
+        name="PredictionMask",
+        filters=1, kernel_size=(1, 1),
+        activation="sigmoid"
+    )(convOut)
+
+    model = Model(inputs=[inputs], outputs=[prediction], name="UNet_Vehicle_Counting")
+    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef, soft_dice_coef])
+
+    return model
 
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
