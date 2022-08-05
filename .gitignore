@@ -131,3 +131,4 @@ dmypy.json
 # Dataset
 /datasets/
 /logs/
+/logs_backup/
