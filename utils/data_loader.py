@@ -1,6 +1,4 @@
 import os
-from os import listdir
-from os.path import isfile, join
 import sys
 import pathlib
 
@@ -53,6 +51,7 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
 
     image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.float32)
     mask_data = np.zeros((len(file_ids), img_h, img_w, 1), dtype=np.float32)
+    count_data = np.zeros((len(file_ids), 1), dtype=np.float32)
     mask_sizes = []
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):
@@ -84,19 +83,31 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
     np.save(save_path + '_size', mask_sizes, allow_pickle=True)
     print("{0}_size.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
 
+    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Counting data label preparing ..'):
+        # Read corresponding mask files iteratively
+        mask_file_name = os.path.splitext(id_)[0] + '.png'
+        mask_ = imread(mask_path + mask_file_name, as_gray=True)
+        count_data[n] = np.array([np.count_nonzero(mask_)])
+
+    save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
+    np.save(save_path + '_count', count_data)
+    print("{0}_count.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
+
 
 def load_train_data(dataset_name, is_dots_expanded=True, expand_size=1):
     file_path = STORAGE_PATH + dataset_name
 
     X_train = np.load(file_path + '/' + 'X_train.npy')
     Y_train = np.load(file_path + '/' + 'Y_train.npy')
+    Y_train_count = np.load(file_path + '/' + 'Y_train_count.npy')
 
     if is_dots_expanded:
         Y_train = expand_labels(Y_train, distance=expand_size)
 
     return {
         'train_data': X_train,
-        'train_label_data': Y_train
+        'train_label_data': Y_train,
+        'train_count_label_data': Y_train_count
     }
 
 def load_test_data(dataset_name, is_dots_expanded=True, expand_size=1):
@@ -104,13 +115,15 @@ def load_test_data(dataset_name, is_dots_expanded=True, expand_size=1):
 
     X_test = np.load(file_path + '/' + 'X_test.npy')
     Y_test = np.load(file_path + '/' + 'Y_test.npy')
+    Y_test_count = np.load(file_path + '/' + 'Y_test_count.npy')
 
     if is_dots_expanded:
         Y_test = expand_labels(Y_test, distance=expand_size)
 
     return {
         'test_data': X_test,
-        'test_label_data': Y_test
+        'test_label_data': Y_test,
+        'test_count_label_data': Y_test_count
     }
 
 def load_val_data(dataset_name, is_dots_expanded=True, expand_size=1):
@@ -118,11 +131,13 @@ def load_val_data(dataset_name, is_dots_expanded=True, expand_size=1):
 
     X_val = np.load(file_path + '/' + 'X_val.npy')
     Y_val = np.load(file_path + '/' + 'Y_val.npy')
+    Y_val_count = np.load(file_path + '/' + 'Y_val_count.npy')
 
     if is_dots_expanded:
         Y_val = expand_labels(Y_val, distance=expand_size)
 
     return {
         'val_data': X_val,
-        'val_label_data': Y_val
+        'val_label_data': Y_val,
+        'val_count_label_data': Y_val_count
     }

@@ -1,11 +1,11 @@
-from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Dropout, Lambda
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
-from tensorflow.keras import backend as K
+
+from datetime import datetime
 
 import tensorflow as tf
 
@@ -160,14 +160,31 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
     convOut = Conv2D(name="convOutb", filters=n_feature_maps, **params)(convOut)
     convOut = BatchNormalization()(convOut)
 
-    prediction = Conv2D(
-        name="PredictionMask",
+    masks = Conv2D(
+        name="mask_output",
         filters=1, kernel_size=(1, 1),
         activation="sigmoid"
     )(convOut)
 
-    model = Model(inputs=[inputs], outputs=[prediction], name="UNet_Vehicle_Counting")
-    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef, soft_dice_coef])
+    counts = Dense(1, name='count_output')(masks)
+
+    model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_Vehicle_Counting")
+    loss_weight = 0.8
+    model.compile(
+        optimizer='adam',
+        loss={
+            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'mask_output': dice_coef_loss
+        },
+        loss_weights={
+            'count_output': loss_weight,
+            'mask_output': 1.0 - loss_weight
+        },
+        metrics={
+            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'mask_output': [dice_coef, soft_dice_coef]
+        }
+    )
 
     return model
 
@@ -242,28 +259,52 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     c9 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
     c9 = BatchNormalization()(c9)
 
-    outputs = Conv2D(1, (1, 1), activation='sigmoid')(c9)
+    masks = Conv2D(1, (1, 1), activation='sigmoid', name='mask_output')(c9)
+    counts = Dense(1, name='count_output')(masks)
 
-    model = Model(inputs=[inputs], outputs=[outputs])
-    model.compile(optimizer='adam', loss=dice_coef_loss, metrics=[dice_coef, soft_dice_coef])
+    model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_V1_Vehicle_Counting")
+
+    loss_weight = 0.8
+    model.compile(
+        optimizer='adam',
+        loss={
+            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'mask_output': dice_coef_loss
+        },
+        loss_weights={
+            'count_output': loss_weight,
+            'mask_output': 1.0 - loss_weight
+        },
+        metrics={
+            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'mask_output': [dice_coef, soft_dice_coef]
+        }
+    )
 
     return model
 
 
 def get_early_stopping(patience=10, verbose=True):
-    return EarlyStopping(patience=patience, verbose=verbose, restore_best_weights=True)
+    return EarlyStopping(monitor='val_loss', patience=patience, verbose=verbose, restore_best_weights=True)
 
-
-def get_model_checkpoint(verbose=True, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5'):
-    return ModelCheckpoint(model_checkpoint_path, verbose=verbose, monitor='val_loss', save_best_only=True)
-
+def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_checkpoint'):
+    now = datetime.now()
+    string_date_time = now.strftime('%m_%d_%Y_%H%M%S')
+    model_save_file_name = './model_checkpoints/' + model_checkpoint_filename + f'_{string_date_time}' + '.h5'
+    return ModelCheckpoint(
+        model_save_file_name,
+        verbose=verbose,
+        monitor='val_loss',
+        save_best_only=True,
+        mode='min'
+    )
 
 def get_model_logging(model_log_dir='./logs'):
     return TensorBoard(log_dir=model_log_dir, write_graph=True, write_images=True)
 
 
-def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100, model_checkpoint_path='./model_checkpoints/model_unet_checkpoint.h5', patience=10):
-    model_checkpoint = get_model_checkpoint(model_checkpoint_path=model_checkpoint_path)
+def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100, model_checkpoint_filename='model_unet_checkpoint', patience=10):
+    model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename)
     early_stopping = get_early_stopping(patience=patience)
     tensorboards = get_model_logging()
 
@@ -271,6 +312,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
 
     X_train = train_data['train_data']
     Y_train = train_data['train_label_data']
+    Y_train_count = train_data['train_count_label_data']
 
     validation_data = None
     if (valid_data != None):
@@ -278,8 +320,11 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
 
     if (validation_data != None):
         results = model.fit(
-            X_train,
-            Y_train,
+            x=X_train,
+            y={
+                'count_output': Y_train_count,
+                'mask_output': Y_train
+             },
             validation_data=validation_data,
             batch_size=batch_size,
             epochs=n_epochs,
@@ -287,8 +332,11 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
         )
     else:
         results = model.fit(
-            X_train,
-            Y_train,
+            x=X_train,
+            y={
+                'count_output': Y_train_count,
+                'mask_output': Y_train
+             },
             validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
@@ -307,14 +355,23 @@ def load_pretrained_model(model_filename):
         "combined_dice_ce_loss": combined_dice_ce_loss,
         "dice_coef_loss": dice_coef_loss,
         "dice_coef": dice_coef,
-        "soft_dice_coef": soft_dice_coef
+        "soft_dice_coef": soft_dice_coef,
+        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
     }
+
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
 
+    loss_weight = 0.8
     model.compile(
         optimizer='adam',
-        loss=dice_coef_loss,
-        metrics=['acc', combined_dice_ce_loss, dice_coef_loss, dice_coef, soft_dice_coef]
+        loss={
+            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'mask_output': dice_coef_loss
+        },
+        metrics={
+            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'mask_output': [dice_coef, soft_dice_coef]
+        }
     )
 
     return model
@@ -327,25 +384,38 @@ def evaluate_model(model_filename, test_data):
 
     X_test = test_data['test_data']
     Y_test = test_data['test_label_data']
+    Y_test_count = test_data['test_count_label_data']
 
     custom_objects = {
         "combined_dice_ce_loss": combined_dice_ce_loss,
         "dice_coef_loss": dice_coef_loss,
         "dice_coef": dice_coef,
-        "soft_dice_coef": soft_dice_coef
+        "soft_dice_coef": soft_dice_coef,
+        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+
+    loss_weight = 0.8
     model.compile(
         optimizer='adam',
-        loss=dice_coef_loss,
-        metrics=['acc', combined_dice_ce_loss, dice_coef_loss, dice_coef, soft_dice_coef]
+        loss={
+            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'mask_output': dice_coef_loss
+        },
+        metrics={
+            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'mask_output': [dice_coef, soft_dice_coef]
+        }
     )
 
-    print("Evaluating model on test dataset. Please wait...")
+    print("Evaluating model on test data. Please wait...")
     metrics = model.evaluate(
         x=X_test,
-        y=Y_test,
+        y={
+            'count_output': Y_test_count,
+            'mask_output': Y_test
+        },
         batch_size=8,
         verbose=1
     )

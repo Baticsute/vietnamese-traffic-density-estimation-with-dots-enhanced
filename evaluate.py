@@ -15,4 +15,4 @@ session = InteractiveSession(config=config)
 # train_data = data_loader.load_train_data('final_data', is_dots_expanded=False)
 test_data = data_loader.load_test_data('final_data', is_dots_expanded=False)
 
-unet_model.evaluate_model('./model_checkpoints/model_unet_checkpoint.h5', test_data)
+unet_model.evaluate_model('./model_checkpoints/model_unet_v2_checkpoint.h5', test_data)
