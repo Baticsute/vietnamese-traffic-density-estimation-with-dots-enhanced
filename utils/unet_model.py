@@ -4,6 +4,7 @@ from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization,
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
+from tqdm.keras import TqdmCallback
 
 from datetime import datetime
 
@@ -201,7 +202,7 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
         },
         metrics={
             'count_output': [tf.keras.metrics.MeanAbsoluteError()],
-            'mask_output': [dice_coef, soft_dice_coef]
+            'mask_output': [dice_coef]
         }
     )
 
@@ -317,7 +318,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
         },
         metrics={
             'count_output': [tf.keras.metrics.MeanAbsoluteError()],
-            'mask_output': [dice_coef, soft_dice_coef]
+            'mask_output': [dice_coef]
         }
     )
 
@@ -368,7 +369,8 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             validation_data=validation_data,
             batch_size=batch_size,
             epochs=n_epochs,
-            callbacks=[early_stopping, model_checkpoint, tensorboards]
+            verbose=0,
+            callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
         )
     else:
         results = model.fit(
@@ -380,7 +382,8 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
-            callbacks=[early_stopping, model_checkpoint, tensorboards]
+            verbose=0,
+            callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
         )
 
     return results
