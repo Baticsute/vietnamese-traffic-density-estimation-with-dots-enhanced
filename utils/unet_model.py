@@ -1,6 +1,6 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, Flatten
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
@@ -165,15 +165,34 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
         filters=1, kernel_size=(1, 1),
         activation="sigmoid"
     )(convOut)
+    # Count training phase
+    masks_ = masks
+    count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
+    count_conv1 = BatchNormalization()(count_conv1)
+    count_conv1 = MaxPooling2D((2, 2))(count_conv1)
+    count_conv1 = SpatialDropout2D(0.1)(count_conv1)
 
-    counts = Dense(1, name='count_output')(masks)
+    count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
+    count_conv2 = BatchNormalization()(count_conv2)
+    count_conv2 = MaxPooling2D((2, 2))(count_conv2)
+    count_conv2 = SpatialDropout2D(0.1)(count_conv2)
+
+    count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
+    count_conv3 = BatchNormalization()(count_conv3)
+
+    count_flatten1 = Flatten()(count_conv3)
+    count_fc1 = Dense(64, activation='relu')(count_flatten1)
+    count_fc1 = Dense(128, activation='relu')(count_fc1)
+    count_fc1 = Dropout(0.2)(count_fc1)
+
+    counts = Dense(1, name='count_output')(count_fc1)
 
     model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_Vehicle_Counting")
     loss_weight = 0.8
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'count_output': tf.keras.losses.MeanAbsoluteError(),
             'mask_output': dice_coef_loss
         },
         loss_weights={
@@ -181,7 +200,7 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
             'mask_output': 1.0 - loss_weight
         },
         metrics={
-            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
             'mask_output': [dice_coef, soft_dice_coef]
         }
     )
@@ -260,7 +279,28 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     c9 = BatchNormalization()(c9)
 
     masks = Conv2D(1, (1, 1), activation='sigmoid', name='mask_output')(c9)
-    counts = Dense(1, name='count_output')(masks)
+    # Count training phase
+    masks_ = masks
+    masks_ = BatchNormalization()(masks_)
+    count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
+    count_conv1 = BatchNormalization()(count_conv1)
+    count_conv1 = MaxPooling2D((2, 2))(count_conv1)
+    count_conv1 = SpatialDropout2D(0.1)(count_conv1)
+
+    count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
+    count_conv2 = BatchNormalization()(count_conv2)
+    count_conv2 = MaxPooling2D((2, 2))(count_conv2)
+    count_conv2 = SpatialDropout2D(0.1)(count_conv2)
+
+    count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
+    count_conv3 = BatchNormalization()(count_conv3)
+
+    count_flatten1 = Flatten()(count_conv3)
+    count_fc1 = Dense(64, activation='relu')(count_flatten1)
+    count_fc1 = Dense(128, activation='relu')(count_fc1)
+    count_fc1 = Dropout(0.2)(count_fc1)
+
+    counts = Dense(1, name='count_output')(count_fc1)
 
     model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_V1_Vehicle_Counting")
 
@@ -268,7 +308,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'count_output': tf.keras.losses.MeanAbsoluteError(),
             'mask_output': dice_coef_loss
         },
         loss_weights={
@@ -276,7 +316,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
             'mask_output': 1.0 - loss_weight
         },
         metrics={
-            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
             'mask_output': [dice_coef, soft_dice_coef]
         }
     )
@@ -365,11 +405,11 @@ def load_pretrained_model(model_filename):
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'count_output': tf.keras.losses.MeanAbsoluteError(),
             'mask_output': dice_coef_loss
         },
         metrics={
-            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
             'mask_output': [dice_coef, soft_dice_coef]
         }
     )
@@ -400,11 +440,11 @@ def evaluate_model(model_filename, test_data):
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError,
+            'count_output': tf.keras.losses.MeanAbsoluteError(),
             'mask_output': dice_coef_loss
         },
         metrics={
-            'count_output': [tf.keras.losses.MeanAbsoluteError],
+            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
             'mask_output': [dice_coef, soft_dice_coef]
         }
     )
