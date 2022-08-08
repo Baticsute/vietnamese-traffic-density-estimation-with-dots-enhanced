@@ -4,6 +4,7 @@ from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization,
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
+from tensorflow.keras import regularizers
 from tqdm.keras import TqdmCallback
 
 from datetime import datetime
@@ -168,23 +169,36 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
     )(convOut)
     # Count training phase
     masks_ = masks
+    masks_ = BatchNormalization()(masks_)
     count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
     count_conv1 = BatchNormalization()(count_conv1)
     count_conv1 = MaxPooling2D((2, 2))(count_conv1)
-    count_conv1 = SpatialDropout2D(0.1)(count_conv1)
+    count_conv1 = SpatialDropout2D(0.2)(count_conv1)
 
     count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
     count_conv2 = BatchNormalization()(count_conv2)
     count_conv2 = MaxPooling2D((2, 2))(count_conv2)
-    count_conv2 = SpatialDropout2D(0.1)(count_conv2)
+    count_conv2 = SpatialDropout2D(0.2)(count_conv2)
 
     count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
+    count_conv3 = SpatialDropout2D(0.2)(count_conv3)
 
     count_flatten1 = Flatten()(count_conv3)
-    count_fc1 = Dense(64, activation='relu')(count_flatten1)
-    count_fc1 = Dense(128, activation='relu')(count_fc1)
-    count_fc1 = Dropout(0.2)(count_fc1)
+
+    count_fc1 = Dense(
+        64,
+        activation='relu',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_flatten1)
+    count_fc1 = Dropout(0.5)(count_fc1)
+
+    count_fc1 = Dense(
+        128,
+        activation='relu',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_fc1)
+    count_fc1 = Dropout(0.5)(count_fc1)
 
     counts = Dense(1, name='count_output')(count_fc1)
 
@@ -286,20 +300,32 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
     count_conv1 = BatchNormalization()(count_conv1)
     count_conv1 = MaxPooling2D((2, 2))(count_conv1)
-    count_conv1 = SpatialDropout2D(0.1)(count_conv1)
+    count_conv1 = SpatialDropout2D(0.2)(count_conv1)
 
     count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
     count_conv2 = BatchNormalization()(count_conv2)
     count_conv2 = MaxPooling2D((2, 2))(count_conv2)
-    count_conv2 = SpatialDropout2D(0.1)(count_conv2)
+    count_conv2 = SpatialDropout2D(0.2)(count_conv2)
 
     count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
+    count_conv3 = SpatialDropout2D(0.2)(count_conv3)
 
     count_flatten1 = Flatten()(count_conv3)
-    count_fc1 = Dense(64, activation='relu')(count_flatten1)
-    count_fc1 = Dense(128, activation='relu')(count_fc1)
-    count_fc1 = Dropout(0.2)(count_fc1)
+
+    count_fc1 = Dense(
+        64,
+        activation='relu',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_flatten1)
+    count_fc1 = Dropout(0.5)(count_fc1)
+
+    count_fc1 = Dense(
+        128,
+        activation='relu',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_fc1)
+    count_fc1 = Dropout(0.5)(count_fc1)
 
     counts = Dense(1, name='count_output')(count_fc1)
 
@@ -341,7 +367,7 @@ def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_che
     )
 
 def get_model_logging(model_log_dir='./logs'):
-    return TensorBoard(log_dir=model_log_dir, write_graph=True, write_images=True)
+    return TensorBoard(log_dir=model_log_dir, write_graph=False, write_images=True)
 
 
 def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100, model_checkpoint_filename='model_unet_checkpoint', patience=10):
