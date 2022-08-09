@@ -317,12 +317,12 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
     count_conv1 = BatchNormalization()(count_conv1)
     count_conv1 = MaxPooling2D((2, 2))(count_conv1)
-    count_conv1 = SpatialDropout2D(0.2)(count_conv1)
+    count_conv1 = SpatialDropout2D(0.5)(count_conv1)
 
     count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
     count_conv2 = BatchNormalization()(count_conv2)
     count_conv2 = MaxPooling2D((2, 2))(count_conv2)
-    count_conv2 = SpatialDropout2D(0.2)(count_conv2)
+    count_conv2 = SpatialDropout2D(0.5)(count_conv2)
 
     count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
@@ -348,7 +348,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
 
     model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_V1_Vehicle_Counting")
 
-    loss_weight = 0.8
+    loss_weight = 0.6
     model.compile(
         optimizer='adam',
         loss={
