@@ -40,6 +40,20 @@ def preprocess_label(mask):
 
     return mask
 
+def mapping_rescale_dot(mask_scale, mask_original):
+    scale_factor_h = mask_scale.shape[0] / mask_original.shape[0]
+    scale_factor_w = mask_scale.shape[1] / mask_original.shape[1]
+    non_zero_points = np.array(np.nonzero(mask_original))
+    non_zero_points[0] = non_zero_points[0] * scale_factor_h
+    non_zero_points[1] = non_zero_points[1] * scale_factor_w
+    non_zero_points = np.transpose(non_zero_points)
+    for point in non_zero_points:
+        x = point[0]
+        y = point[1]
+        mask_scale[x][y] = 1.0
+
+    return mask_scale
+
 
 def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=96, img_w=128, img_ch=1):
     sys.stdout.flush()
@@ -67,29 +81,22 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
         # Read corresponding mask files iteratively
         mask_file_name = os.path.splitext(id_)[0] + '.png'
-        mask = np.zeros((img_h, img_w, 1))
+        mask = np.zeros((img_h, img_w))
 
-        mask_ = imread(mask_path + mask_file_name)
-        mask_sizes.append([mask.shape[0], mask.shape[1]])
-        # Expand individual mask dimensions
-        mask_ = np.expand_dims(resize(mask_, (img_h, img_w), mode='constant', preserve_range=True), axis=-1)
+        mask_ = imread(mask_path + mask_file_name, as_gray=True)
+        mask_sizes.append([mask_.shape[0], mask_.shape[1]])
+        count_data[n] = np.array([np.count_nonzero(mask_)])
 
-        mask = np.maximum(mask, mask_)
-        mask_data[n] = preprocess_label(mask)
+        # original size div to scale size
+        mask = mapping_rescale_dot(mask, mask_)
+
+        mask_data[n] = mask.reshape((img_h, img_w, 1))
 
     save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
     np.save(save_path, mask_data)
     print("{0}.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
     np.save(save_path + '_size', mask_sizes, allow_pickle=True)
     print("{0}_size.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
-
-    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Counting data label preparing ..'):
-        # Read corresponding mask files iteratively
-        mask_file_name = os.path.splitext(id_)[0] + '.png'
-        mask_ = imread(mask_path + mask_file_name, as_gray=True)
-        count_data[n] = np.array([np.count_nonzero(mask_)])
-
-    save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
     np.save(save_path + '_count', count_data)
     print("{0}_count.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
 

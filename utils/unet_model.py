@@ -10,10 +10,27 @@ from tqdm.keras import TqdmCallback
 from datetime import datetime
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.2
+
+
+def gaussian_kernel(size: int, mean: float, std: float):
+    """Makes 2D gaussian Kernel for convolution."""
+
+    d = tfp.distributions.Normal(mean, std)
+
+    vals = d.prob(tf.range(start=-size, limit=size + 1, dtype=tf.float32))
+
+    gauss_kernel = tf.einsum(
+        'i,j->ij',
+        vals,
+        vals
+    )
+
+    return gauss_kernel / tf.reduce_sum(gauss_kernel)
 
 
 def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
@@ -354,6 +371,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
 def get_early_stopping(patience=10, verbose=True):
     return EarlyStopping(monitor='val_loss', patience=patience, verbose=verbose, restore_best_weights=True)
 
+
 def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_checkpoint'):
     now = datetime.now()
     string_date_time = now.strftime('%m_%d_%Y_%H%M%S')
@@ -366,11 +384,13 @@ def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_che
         mode='min'
     )
 
+
 def get_model_logging(model_log_dir='./logs'):
     return TensorBoard(log_dir=model_log_dir, write_graph=False, write_images=True)
 
 
-def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100, model_checkpoint_filename='model_unet_checkpoint', patience=10):
+def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
+                model_checkpoint_filename='model_unet_checkpoint', patience=10):
     model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename)
     early_stopping = get_early_stopping(patience=patience)
     tensorboards = get_model_logging()
@@ -391,7 +411,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             y={
                 'count_output': Y_train_count,
                 'mask_output': Y_train
-             },
+            },
             validation_data=validation_data,
             batch_size=batch_size,
             epochs=n_epochs,
@@ -404,7 +424,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             y={
                 'count_output': Y_train_count,
                 'mask_output': Y_train
-             },
+            },
             validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
