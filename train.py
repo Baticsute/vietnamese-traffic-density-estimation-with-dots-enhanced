@@ -1,5 +1,5 @@
 from utils import data_loader
-from utils import unet_model
+from utils import model
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -13,8 +13,8 @@ tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering
 
 train_data = data_loader.load_train_data('final_data', is_dots_expanded=False)
 #
-unet = unet_model.get_unet_model(img_h=192, img_w=256, img_ch=1)
-unet_model.train_model(
+unet = model.get_unet_model(img_h=192, img_w=256, img_ch=1)
+model.train_model(
     model=unet,
     train_data=train_data,
     batch_size=8,

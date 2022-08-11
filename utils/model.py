@@ -5,12 +5,14 @@ from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
+from skimage.transform import resize
 from tqdm.keras import TqdmCallback
 
 from datetime import datetime
 
 import tensorflow as tf
 import tensorflow_probability as tfp
+import numpy as np
 
 tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
@@ -187,31 +189,39 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
     # Count training phase
     masks_ = masks
     masks_ = BatchNormalization()(masks_)
-    count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
-    count_conv1 = BatchNormalization()(count_conv1)
-    count_conv1 = MaxPooling2D((2, 2))(count_conv1)
-    count_conv1 = SpatialDropout2D(0.2)(count_conv1)
 
-    count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
+    count_conv2 = Conv2D(
+        32, (3, 3),
+        activation='relu',
+        padding='same',
+        kernel_initializer='he_normal',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(masks_)
     count_conv2 = BatchNormalization()(count_conv2)
     count_conv2 = MaxPooling2D((2, 2))(count_conv2)
-    count_conv2 = SpatialDropout2D(0.2)(count_conv2)
+    count_conv2 = SpatialDropout2D(0.5)(count_conv2)
 
-    count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
+    count_conv3 = Conv2D(
+        64, (1, 1),
+        activation='relu',
+        padding='same',
+        kernel_initializer='he_normal',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
-    count_conv3 = SpatialDropout2D(0.2)(count_conv3)
+    count_conv3 = SpatialDropout2D(0.5)(count_conv3)
 
     count_flatten1 = Flatten()(count_conv3)
 
     count_fc1 = Dense(
-        64,
+        32,
         activation='relu',
         kernel_regularizer=regularizers.l2(0.0001)
     )(count_flatten1)
     count_fc1 = Dropout(0.5)(count_fc1)
 
     count_fc1 = Dense(
-        128,
+        64,
         activation='relu',
         kernel_regularizer=regularizers.l2(0.0001)
     )(count_fc1)
@@ -220,7 +230,7 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
     counts = Dense(1, name='count_output')(count_fc1)
 
     model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_Vehicle_Counting")
-    loss_weight = 0.8
+    loss_weight = 0.6
     model.compile(
         optimizer='adam',
         loss={
@@ -314,31 +324,39 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     # Count training phase
     masks_ = masks
     masks_ = BatchNormalization()(masks_)
-    count_conv1 = Conv2D(16, (7, 7), activation='relu', padding='same')(masks_)
-    count_conv1 = BatchNormalization()(count_conv1)
-    count_conv1 = MaxPooling2D((2, 2))(count_conv1)
-    count_conv1 = SpatialDropout2D(0.5)(count_conv1)
 
-    count_conv2 = Conv2D(32, (3, 3), activation='relu', padding='same')(count_conv1)
+    count_conv2 = Conv2D(
+        32, (3, 3),
+        activation='relu',
+        padding='same',
+        kernel_initializer='he_normal',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(masks_)
     count_conv2 = BatchNormalization()(count_conv2)
     count_conv2 = MaxPooling2D((2, 2))(count_conv2)
     count_conv2 = SpatialDropout2D(0.5)(count_conv2)
 
-    count_conv3 = Conv2D(64, (1, 1), activation='relu', padding='same')(count_conv2)
+    count_conv3 = Conv2D(
+        64, (1, 1),
+        activation='relu',
+        padding='same',
+        kernel_initializer='he_normal',
+        kernel_regularizer=regularizers.l2(0.0001)
+    )(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
-    count_conv3 = SpatialDropout2D(0.2)(count_conv3)
+    count_conv3 = SpatialDropout2D(0.5)(count_conv3)
 
     count_flatten1 = Flatten()(count_conv3)
 
     count_fc1 = Dense(
-        64,
+        32,
         activation='relu',
         kernel_regularizer=regularizers.l2(0.0001)
     )(count_flatten1)
     count_fc1 = Dropout(0.5)(count_fc1)
 
     count_fc1 = Dense(
-        128,
+        64,
         activation='relu',
         kernel_regularizer=regularizers.l2(0.0001)
     )(count_fc1)
@@ -511,3 +529,29 @@ def evaluate_model(model_filename, test_data):
 
     for idx, metric in enumerate(metrics):
         print("Test dataset {} = {:.2f}".format(model.metrics_names[idx], metric))
+
+
+def predict(model_filename, image):
+    custom_objects = {
+        "combined_dice_ce_loss": combined_dice_ce_loss,
+        "dice_coef_loss": dice_coef_loss,
+        "dice_coef": dice_coef,
+        "soft_dice_coef": soft_dice_coef,
+        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
+    }
+
+    model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+
+    input_shape = list(model.get_layer('input_1').output_shape[0])
+    input_shape[0] = 1
+    img_h = input_shape[1]
+    img_w = input_shape[2]
+    img = resize(image, (img_h, img_w), mode='constant', preserve_range=True)
+    img = (img - img.mean()) / img.std()
+    img = np.expand_dims(img, axis=0)
+
+    count_output, mask_output = model.predict(img)
+    density_amount = count_output[0][0]
+    mask = np.around(mask_output[0])
+
+    return density_amount, mask

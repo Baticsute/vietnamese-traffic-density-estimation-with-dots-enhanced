@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 from utils import data_loader
-from utils import unet_model
+from utils import model
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -15,4 +15,4 @@ session = InteractiveSession(config=config)
 # train_data = data_loader.load_train_data('final_data', is_dots_expanded=False)
 test_data = data_loader.load_test_data('final_data', is_dots_expanded=False)
 
-unet_model.evaluate_model('./model_checkpoints/model_unet_checkpoint_08_08_2022_011621.h5', test_data)
+model.evaluate_model('./model_checkpoints/model_unet_checkpoint_08_10_2022_024605.h5', test_data)
