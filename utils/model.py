@@ -251,7 +251,7 @@ def get_unet_model_v2(img_h=96, img_w=128, img_ch=1, n_feature_maps=32):
 
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
-    inputs = Input((img_h, img_w, img_ch))
+    inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     s = inputs
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
