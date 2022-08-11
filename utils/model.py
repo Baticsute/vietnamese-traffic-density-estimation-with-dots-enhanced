@@ -337,13 +337,14 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     count_conv2 = SpatialDropout2D(0.5)(count_conv2)
 
     count_conv3 = Conv2D(
-        64, (1, 1),
+        64, (3, 3),
         activation='relu',
         padding='same',
         kernel_initializer='he_normal',
         kernel_regularizer=regularizers.l2(0.0001)
     )(count_conv2)
     count_conv3 = BatchNormalization()(count_conv3)
+    count_conv3 = MaxPooling2D((2, 2))(count_conv3)
     count_conv3 = SpatialDropout2D(0.5)(count_conv3)
 
     count_flatten1 = Flatten()(count_conv3)
