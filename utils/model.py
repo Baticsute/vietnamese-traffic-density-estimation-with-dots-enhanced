@@ -213,7 +213,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     mask_lv2 = BatchNormalization()(mask_lv2)
     mask_lv2 = SpatialDropout2D(0.4)(mask_lv2)
 
-    mask_average_layer = Average([masks_, mask_lv1, mask_lv2])
+    mask_average_layer = Average()([masks_, mask_lv1, mask_lv2])
 
     count_flatten1 = Flatten()(mask_average_layer)
 
