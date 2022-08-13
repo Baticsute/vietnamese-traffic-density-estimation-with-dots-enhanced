@@ -1,7 +1,7 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, Flatten
-from tensorflow.keras.layers import MaxPooling2D
+from tensorflow.keras.layers import MaxPooling2D , Average
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
@@ -193,29 +193,29 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     masks_ = masks
     masks_ = BatchNormalization()(masks_)
 
-    count_conv2 = Conv2D(
+    mask_lv1 = Conv2D(
         32, (3, 3),
         activation='relu',
         padding='same',
         kernel_initializer='he_normal',
         kernel_regularizer=regularizers.l2(0.0001)
     )(masks_)
-    count_conv2 = BatchNormalization()(count_conv2)
-    count_conv2 = MaxPooling2D((2, 2))(count_conv2)
-    count_conv2 = SpatialDropout2D(0.4)(count_conv2)
+    mask_lv1 = BatchNormalization()(mask_lv1)
+    mask_lv1 = SpatialDropout2D(0.4)(mask_lv1)
 
-    count_conv3 = Conv2D(
+    mask_lv2 = Conv2D(
         64, (3, 3),
         activation='relu',
         padding='same',
         kernel_initializer='he_normal',
         kernel_regularizer=regularizers.l2(0.0001)
-    )(count_conv2)
-    count_conv3 = BatchNormalization()(count_conv3)
-    count_conv3 = MaxPooling2D((2, 2))(count_conv3)
-    count_conv3 = SpatialDropout2D(0.4)(count_conv3)
+    )(mask_lv1)
+    mask_lv2 = BatchNormalization()(mask_lv2)
+    mask_lv2 = SpatialDropout2D(0.4)(mask_lv2)
 
-    count_flatten1 = Flatten()(count_conv3)
+    mask_average_layer = Average([masks_, mask_lv1, mask_lv2])
+
+    count_flatten1 = Flatten()(mask_average_layer)
 
     count_fc1 = Dense(
         32,
