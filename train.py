@@ -20,5 +20,5 @@ model.train_model(
     batch_size=8,
     n_epochs=500,
     model_checkpoint_filename='model_unet_checkpoint',
-    patience=50
+    patience=100
 )
