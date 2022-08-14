@@ -191,7 +191,6 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     masks = Conv2D(1, (1, 1), activation='sigmoid', name='mask_output')(c9)
     # Count training phase
     masks_ = masks
-    masks_ = BatchNormalization()(masks_)
 
     mask_lv1 = Conv2D(
         32, (3, 3),
@@ -200,20 +199,19 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
         kernel_initializer='he_normal',
         kernel_regularizer=regularizers.l2(0.0001)
     )(masks_)
-    mask_lv1 = BatchNormalization()(mask_lv1)
     mask_lv1 = SpatialDropout2D(0.4)(mask_lv1)
 
     mask_lv2 = Conv2D(
-        64, (3, 3),
+        32, (3, 3),
         activation='relu',
         padding='same',
         kernel_initializer='he_normal',
         kernel_regularizer=regularizers.l2(0.0001)
     )(mask_lv1)
-    mask_lv2 = BatchNormalization()(mask_lv2)
     mask_lv2 = SpatialDropout2D(0.4)(mask_lv2)
 
     mask_average_layer = Average()([masks_, mask_lv1, mask_lv2])
+    mask_average_layer = MaxPooling2D(pool_size=(2, 2))(mask_average_layer)
 
     count_flatten1 = Flatten()(mask_average_layer)
 
@@ -337,19 +335,6 @@ def load_pretrained_model(model_filename):
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
 
-    loss_weight = 0.8
-    model.compile(
-        optimizer='adam',
-        loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError(),
-            'mask_output': dice_coef_loss
-        },
-        metrics={
-            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
-            'mask_output': [dice_coef, soft_dice_coef]
-        }
-    )
-
     return model
 
 
@@ -400,16 +385,7 @@ def evaluate_model(model_filename, test_data):
         print("Test dataset {} = {:.2f}".format(model.metrics_names[idx], metric))
 
 
-def predict(model_filename, image):
-    custom_objects = {
-        "combined_dice_ce_loss": combined_dice_ce_loss,
-        "dice_coef_loss": dice_coef_loss,
-        "dice_coef": dice_coef,
-        "soft_dice_coef": soft_dice_coef,
-        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
-    }
-
-    model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+def predict(model, image):
 
     input_shape = list(model.get_layer('model_image_input').output_shape[0])
     input_shape[0] = 1
