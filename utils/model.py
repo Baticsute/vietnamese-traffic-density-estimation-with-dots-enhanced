@@ -267,7 +267,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError(),
+            'count_output': tf.keras.losses.MeanSquaredError(),
             'mask_output': dice_coef_loss
         },
         loss_weights={
@@ -391,7 +391,7 @@ def evaluate_model(model_filename, test_data):
     model.compile(
         optimizer='adam',
         loss={
-            'count_output': tf.keras.losses.MeanAbsoluteError(),
+            'count_output': tf.keras.losses.MeanSquaredError(),
             'mask_output': dice_coef_loss
         },
         metrics={
