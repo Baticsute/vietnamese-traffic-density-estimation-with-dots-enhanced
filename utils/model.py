@@ -1,12 +1,17 @@
 from tensorflow.keras.models import Model
+from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, Flatten
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, Flatten, Activation
 from tensorflow.keras.layers import MaxPooling2D , Average
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
 from skimage.transform import resize
 from tqdm.keras import TqdmCallback
+from tensorflow.keras.initializers import RandomNormal
+
+from tensorflow.keras.optimizers import SGD, Adam
+
 
 from datetime import datetime
 
@@ -93,30 +98,55 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1)
     return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
            (1 - weight_dice_loss) * bce(target, prediction)
 
+def mae_metric(y_true, y_pred, axis=(0, 1)):
+    return tf.abs(
+        tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
+    )
 
-def get_count_cnn(img_h=96, img_w=128, img_ch=1,):
-    inputs = Input((img_h, img_w, img_ch), name='ccnn_model_image_input')
-    s = inputs
+def get_csrnet_model():
+    sgd = SGD(lr=1e-7, decay=5 * 1e-4, momentum=0.95)
+    optimizer = Adam(lr=1e-5)
+    vgg16_model = VGG16(weights='imagenet', include_top=False)
+    # model = Model(inputs=base_model.input, outputs=base_model.get_layer('block4_pool').output)
+    x = vgg16_model.get_layer('block4_conv3').output
+    x = BatchNormalization()(x)
+    #     x = UpSampling2D(size=(8, 8))(x)
+    x = Conv2D(filters=512, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=512, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=512, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=256, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=128, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=64, kernel_size=(3, 3), dilation_rate=2, padding='same', use_bias=False,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(filters=1, kernel_size=(1, 1), dilation_rate=1, padding='same', use_bias=True,
+               kernel_initializer=RandomNormal(stddev=0.01))(x)
+    #     x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    model = Model(inputs=vgg16_model.input, outputs=x)
+    model.compile(
+        optimizer=optimizer,
+        loss=tf.keras.losses.MeanSquaredError(),
+        metrics=[mae_metric]
+    )
 
-    c1 = Conv2D(32, (7, 7), activation='relu', kernel_initializer='he_normal', padding='same')(s)
-    c1 = BatchNormalization()(c1)
-    p1 = MaxPooling2D((2, 2), strides=(2,2))(c1)
-
-    c2 = Conv2D(32, (7, 7), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
-    c2 = BatchNormalization()(c2)
-    p2 = MaxPooling2D((2, 2), strides=(2,2))(c2)
-
-    c3 = Conv2D(64, (5, 5), activation='relu', kernel_initializer='he_normal', padding='same')(p2)
-    c3 = BatchNormalization()(c3)
-
-    c4 = Conv2D(1024, (1, 1), activation='relu', kernel_initializer='he_normal', padding='same')(c3)
-    c4 = BatchNormalization()(c4)
-
-    c5 = Conv2D(512, (1, 1), activation='relu', kernel_initializer='he_normal', padding='same')(c4)
-    c5 = BatchNormalization()(c5)
-
-    return c5
-
+    return model
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
