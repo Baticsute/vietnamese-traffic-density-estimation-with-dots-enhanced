@@ -103,10 +103,11 @@ def mae_metric(y_true, y_pred, axis=(0, 1)):
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-def get_csrnet_model():
-    sgd = SGD(lr=1e-7, decay=5 * 1e-4, momentum=0.95)
+def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
+    # sgd = SGD(lr=1e-7, decay=5 * 1e-4, momentum=0.95)
+    inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     optimizer = Adam(lr=1e-5)
-    vgg16_model = VGG16(weights='imagenet', include_top=False)
+    vgg16_model = VGG16(weights='imagenet', include_top=False, input_tensor=inputs)
     # model = Model(inputs=base_model.input, outputs=base_model.get_layer('block4_pool').output)
     x = vgg16_model.get_layer('block4_conv3').output
     x = BatchNormalization()(x)
@@ -301,7 +302,7 @@ def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_che
 
 
 def get_model_logging(model_log_dir='./logs'):
-    return TensorBoard(log_dir=model_log_dir, write_graph=False, write_images=True)
+    return TensorBoard(log_dir=model_log_dir, write_graph=False)
 
 
 def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,

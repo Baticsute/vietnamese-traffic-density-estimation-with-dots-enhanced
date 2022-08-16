@@ -74,6 +74,8 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
         image_data[n] = preprocess_img(img)
 
+    if not os.path.exists(STORAGE_PATH + dataset_name):
+        os.makedirs(STORAGE_PATH + dataset_name)
     save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
     np.save(save_path, image_data)
     print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
