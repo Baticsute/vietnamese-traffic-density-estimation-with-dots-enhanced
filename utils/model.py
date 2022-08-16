@@ -1,8 +1,9 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, Flatten, Activation
-from tensorflow.keras.layers import MaxPooling2D , Average
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, SpatialDropout2D, Dense, Dropout, \
+    Flatten, Activation
+from tensorflow.keras.layers import MaxPooling2D, Average
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
@@ -11,7 +12,6 @@ from tqdm.keras import TqdmCallback
 from tensorflow.keras.initializers import RandomNormal
 
 from tensorflow.keras.optimizers import SGD, Adam
-
 
 from datetime import datetime
 
@@ -322,7 +322,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
         validation_data = (valid_data['val_data'], valid_data['val_label_data'])
 
     if (validation_data != None):
-        results = model.fit(
+        model.fit(
             x=X_train,
             y={
                 'count_output': Y_train_count,
@@ -335,7 +335,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
         )
     else:
-        results = model.fit(
+        model.fit(
             x=X_train,
             y={
                 'count_output': Y_train_count,
@@ -347,8 +347,6 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
             verbose=0,
             callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
         )
-
-    return results
 
 
 def load_pretrained_model(model_filename):
@@ -417,7 +415,6 @@ def evaluate_model(model_filename, test_data):
 
 
 def predict(model, image):
-
     input_shape = list(model.get_layer('model_image_input').output_shape[0])
     input_shape[0] = 1
     img_h = input_shape[1]
