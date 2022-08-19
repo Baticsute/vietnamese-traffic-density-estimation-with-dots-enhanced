@@ -20,18 +20,18 @@ data_loader.prepare_and_save_data(
     image_path=TRAIN_PATH_IMAGES,
     mask_path=TRAIN_PATH_MASKS,
     data_type='train',
-    dataset_name='final_data_vgg16',
-    img_h=224,
-    img_w=224,
-    img_ch=1
+    dataset_name='final_data_color',
+    img_h=192,
+    img_w=256,
+    img_ch=3
 )
 
 data_loader.prepare_and_save_data(
     image_path=TEST_PATH_IMAGES,
     mask_path=TEST_PATH_MASKS,
     data_type='test',
-    dataset_name='final_data_vgg16',
-    img_h=224,
-    img_w=224,
-    img_ch=1
+    dataset_name='final_data_color',
+    img_h=192,
+    img_w=256,
+    img_ch=3
 )

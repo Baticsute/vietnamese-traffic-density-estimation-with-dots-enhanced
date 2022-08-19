@@ -7,7 +7,7 @@ from tensorflow.compat.v1 import InteractiveSession
 
 import numpy as np
 from tensorflow.keras import Model
-
+import tensorflow as tf
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
@@ -16,10 +16,11 @@ session = InteractiveSession(config=config)
 image = imread('./examples/Image3759.jpg')[:, :, :1]
 X_test = np.load('./data_storage/final_data/X_test.npy')
 
-model_pretrained = model.load_pretrained_model('./model_checkpoints/model_unet_checkpoint_08_14_2022_022732.h5')
+model_pretrained = model.load_pretrained_model('./model_checkpoints/model_unet_checkpoint_08_18_2022_031044.h5')
 model_pretrained.summary()
 results = []
-model_pretrained = Model(inputs=model_pretrained.inputs, outputs=model_pretrained.layers[58].output)
+# model_pretrained = Model(inputs=model_pretrained.inputs, outputs=model_pretrained.layers[59].output)
+model_pretrained = Model(inputs=model_pretrained.inputs, outputs=model_pretrained.outputs)
 
 for i in range(2):
     img = np.expand_dims(X_test[i], axis=0)

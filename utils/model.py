@@ -10,7 +10,7 @@ from tensorflow.keras import regularizers
 from skimage.transform import resize
 from tqdm.keras import TqdmCallback
 from tensorflow.keras.initializers import RandomNormal
-
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import SGD, Adam
 
 from datetime import datetime
@@ -98,10 +98,18 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1)
     return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
            (1 - weight_dice_loss) * bce(target, prediction)
 
+
 def mae_metric(y_true, y_pred, axis=(0, 1)):
     return tf.abs(
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
+
+
+def mse_metric(y_true, y_pred, axis=(0, 1)):
+    return tf.square(
+        tf.reduce_sum(y_pred, axis=axis) - tf.reduce_sum(y_true, axis=axis)
+    )
+
 
 def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
     # sgd = SGD(lr=1e-7, decay=5 * 1e-4, momentum=0.95)
@@ -148,6 +156,7 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
     )
 
     return model
+
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
@@ -220,65 +229,14 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     c9 = SpatialDropout2D(0.4)(c9)
 
     masks = Conv2D(1, (1, 1), activation='sigmoid', name='mask_output')(c9)
-    # Count training phase
-    masks_ = masks
 
-    mask_lv1 = Conv2D(
-        32, (3, 3),
-        activation='relu',
-        padding='same',
-        kernel_initializer='he_normal',
-        kernel_regularizer=regularizers.l2(0.0001)
-    )(masks_)
-    mask_lv1 = SpatialDropout2D(0.4)(mask_lv1)
+    model = Model(inputs=[inputs], outputs=[masks], name="UNet_V1_Vehicle_Counting")
 
-    mask_lv2 = Conv2D(
-        32, (3, 3),
-        activation='relu',
-        padding='same',
-        kernel_initializer='he_normal',
-        kernel_regularizer=regularizers.l2(0.0001)
-    )(mask_lv1)
-    mask_lv2 = SpatialDropout2D(0.4)(mask_lv2)
-
-    mask_average_layer = Average()([masks_, mask_lv1, mask_lv2])
-    mask_average_layer = MaxPooling2D(pool_size=(2, 2))(mask_average_layer)
-
-    count_flatten1 = Flatten()(mask_average_layer)
-
-    count_fc1 = Dense(
-        32,
-        activation='relu',
-        kernel_regularizer=regularizers.l2(0.0001)
-    )(count_flatten1)
-    count_fc1 = Dropout(0.5)(count_fc1)
-
-    count_fc1 = Dense(
-        64,
-        activation='relu',
-        kernel_regularizer=regularizers.l2(0.0001)
-    )(count_fc1)
-    count_fc1 = Dropout(0.5)(count_fc1)
-
-    counts = Dense(1, name='count_output')(count_fc1)
-
-    model = Model(inputs=[inputs], outputs=[counts, masks], name="UNet_V1_Vehicle_Counting")
-
-    loss_weight = 0.6
     model.compile(
         optimizer='adam',
-        loss={
-            'count_output': tf.keras.losses.MeanSquaredError(),
-            'mask_output': dice_coef_loss
-        },
-        loss_weights={
-            'count_output': loss_weight,
-            'mask_output': 1.0 - loss_weight
-        },
-        metrics={
-            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
-            'mask_output': [dice_coef]
-        }
+        loss=[dice_coef_loss, tf.keras.losses.MeanSquaredError()],
+        loss_weights=[0.6, 0.4],
+        metrics=[mse_metric, mae_metric, dice_coef],
     )
 
     return model
@@ -324,10 +282,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
     if (validation_data != None):
         model.fit(
             x=X_train,
-            y={
-                'count_output': Y_train_count,
-                'mask_output': Y_train
-            },
+            y=Y_train,
             validation_data=validation_data,
             batch_size=batch_size,
             epochs=n_epochs,
@@ -337,16 +292,39 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
     else:
         model.fit(
             x=X_train,
-            y={
-                'count_output': Y_train_count,
-                'mask_output': Y_train
-            },
+            y=Y_train,
             validation_split=VALIDATION_SIZE_SPLIT,
             batch_size=batch_size,
             epochs=n_epochs,
             verbose=0,
             callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
         )
+
+
+def train_generator_model(
+        model,
+        train_data_generator,
+        validation_data_generator,
+        batch_size=64,
+        n_epochs=100,
+        model_checkpoint_filename='model_unet_checkpoint',
+        patience=10
+):
+    model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename)
+    early_stopping = get_early_stopping(patience=patience)
+    tensorboards = get_model_logging()
+
+    model.summary()
+
+    model.fit_generator(
+        generator=train_data_generator,
+        validation_data=validation_data_generator,
+        epochs=n_epochs,
+        verbose=0,
+        use_multiprocessing=True,
+        workers=16,
+        callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
+    )
 
 
 def load_pretrained_model(model_filename):
