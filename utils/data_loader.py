@@ -79,7 +79,7 @@ def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=
         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
         img = preprocess_img(img)
         file_save_name = storage_path + '/images/' + os.path.splitext(id_)[0]
-        np.save(file_save_name, preprocess_img(img))
+        np.save(file_save_name, img)
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
         # Read corresponding mask files iteratively
@@ -100,4 +100,51 @@ def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=
         mask = mapping_rescale_dot(mask, mask_)
         mask = mask.reshape((img_h, img_w, 1))
         file_save_name = storage_path + '/masks/' + os.path.splitext(id_)[0]
-        np.save(file_save_name, preprocess_img(mask))
+        np.save(file_save_name, mask)
+
+def prepare_and_save_bulk_data(image_path, mask_path, data_type, dataset_name, img_h=96, img_w=128, img_ch=1):
+    sys.stdout.flush()
+
+    file_ids = next(os.walk(image_path))[2]
+    # X_train, Y_train or X_test, Y_test etc.
+    image_files_type = 'X_' + data_type
+    mask_files_type = 'Y_' + data_type
+
+    image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.float32)
+    mask_data = np.zeros((len(file_ids), img_h, img_w, 1), dtype=np.float32)
+    count_data = np.zeros((len(file_ids), 1), dtype=np.float32)
+    mask_sizes = []
+
+    if not os.path.exists(STORAGE_PATH + dataset_name):
+        os.makedirs(STORAGE_PATH + dataset_name)
+    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):
+        # Read image files iteratively
+        img = imread(image_path + id_)[:, :, :img_ch]
+        img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
+        image_data[n] = preprocess_img(img)
+
+    save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
+    np.save(save_path, image_data)
+    print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
+
+    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
+        # Read corresponding mask files iteratively
+        mask_file_name = os.path.splitext(id_)[0] + '.png'
+        mask = np.zeros((img_h, img_w))
+
+        mask_ = imread(mask_path + mask_file_name, as_gray=True)
+        mask_sizes.append([mask_.shape[0], mask_.shape[1]])
+        count_data[n] = np.array([np.count_nonzero(mask_)])
+
+        # original size div to scale size
+        mask = mapping_rescale_dot(mask, mask_)
+
+        mask_data[n] = mask.reshape((img_h, img_w, 1))
+
+    save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
+    np.save(save_path, mask_data)
+    print("{0}.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
+    np.save(save_path + '_size', mask_sizes, allow_pickle=True)
+    print("{0}_size.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
+    np.save(save_path + '_count', count_data)
+    print("{0}_count.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))

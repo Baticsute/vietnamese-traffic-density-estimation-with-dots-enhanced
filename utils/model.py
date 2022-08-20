@@ -235,8 +235,8 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     model.compile(
         optimizer='adam',
         loss=[dice_coef_loss, tf.keras.losses.MeanSquaredError()],
-        loss_weights=[0.6, 0.4],
-        metrics=[mse_metric, mae_metric, dice_coef],
+        loss_weights=[0.5, 0.5],
+        metrics=[mse_metric, mae_metric, dice_coef_loss, dice_coef],
     )
 
     return model

@@ -17,6 +17,7 @@ class DatasetGenerator(keras.utils.Sequence):
             self,
             image_files_ids,
             dataset_name,
+            data_type='train',
             file_extension='.npy',
             batch_size=32,
             img_h=192,
@@ -29,6 +30,7 @@ class DatasetGenerator(keras.utils.Sequence):
         self.img_h = img_h
         self.img_w = img_w
         self.dataset_name = dataset_name
+        self.data_type = data_type
         self.file_extension = file_extension
         self.shuffle = shuffle
         self.n_channels = n_channels
@@ -57,17 +59,20 @@ class DatasetGenerator(keras.utils.Sequence):
         # Initialization
         images = np.zeros((self.batch_size, self.img_h, self.img_w, self.n_channels), dtype=np.float32)
         masks = np.zeros((self.batch_size, self.img_h, self.img_w, 1), dtype=np.float32)
+        base_path = STORAGE_PATH + self.dataset_name + '/' + self.data_type
+        images_storage_path = base_path + '/images/'
+        masks_storage_path = base_path + '/masks/'
 
         # Generate data
         for i, id_ in enumerate(ids):
             # Read image files iteratively
 
-            mask_file_name = os.path.splitext(id_)[0] + '.npy'
-            mask = np.zeros((self.img_h, self.img_w))
-            mask_ = imread(self.mask_files_path + mask_file_name, as_gray=True)
-            # original size div to scale size
-            mask = self.mapping_rescale_dot(mask, mask_)
-            masks[i] = mask.reshape((self.img_h, self.img_w, 1))
+            file_name = os.path.splitext(id_)[0] + '.npy'
+            img = np.load(images_storage_path + file_name)
+            msk = np.load(masks_storage_path + file_name)
+
+            images[i] = img
+            masks[i] = msk
 
         return images, masks
 

@@ -38,16 +38,21 @@ training_ids, validation_ids = train_test_split(image_files_ids, test_size=0.2, 
 
 training_generator = feed_data_generator.DatasetGenerator(
     image_files_ids=training_ids,
-    image_files_path=TRAIN_PATH_IMAGES,
-    mask_files_path=TRAIN_PATH_MASKS,
-    batch_size=batch_size,
+    dataset_name='final_data_color_1',
+    data_type='train',
+    batch_size=16,
+    img_h=192,
+    img_w=256,
     n_channels=3
 )
+
 validation_generator = feed_data_generator.DatasetGenerator(
     image_files_ids=validation_ids,
-    image_files_path=TRAIN_PATH_IMAGES,
-    mask_files_path=TRAIN_PATH_MASKS,
-    batch_size=batch_size,
+    dataset_name='final_data_color_1',
+    data_type='train',
+    batch_size=16,
+    img_h=192,
+    img_w=256,
     n_channels=3
 )
 
