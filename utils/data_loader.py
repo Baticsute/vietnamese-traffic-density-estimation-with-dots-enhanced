@@ -29,7 +29,8 @@ def preprocess_img(img):
     Preprocessing for the image
     z-score normalize
     """
-    return (img - img.mean()) / img.std()
+    # return (img - img.mean()) / img.std()
+    return img / 255.0
 
 def preprocess_label(mask):
     """
@@ -55,30 +56,30 @@ def mapping_rescale_dot(mask_scale, mask_original):
     return mask_scale
 
 
-def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=96, img_w=128, img_ch=1):
+def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=96, img_w=128, img_ch=1):
     sys.stdout.flush()
 
     file_ids = next(os.walk(image_path))[2]
-    # X_train, Y_train or X_test, Y_test etc.
-    image_files_type = 'X_' + data_type
-    mask_files_type = 'Y_' + data_type
 
-    image_data = np.zeros((len(file_ids), img_h, img_w, img_ch), dtype=np.float32)
-    mask_data = np.zeros((len(file_ids), img_h, img_w, 1), dtype=np.float32)
-    count_data = np.zeros((len(file_ids), 1), dtype=np.float32)
-    mask_sizes = []
+    storage_path = STORAGE_PATH + dataset_name + '/' + data_type
+    if not os.path.exists(STORAGE_PATH + dataset_name):
+        os.makedirs(storage_path + '/images')
+        os.makedirs(storage_path + '/masks')
+        os.makedirs(storage_path + '/original_shapes')
+        os.makedirs(storage_path + '/dot_counts')
+    else:
+        os.makedirs(storage_path + '/images', exist_ok=True)
+        os.makedirs(storage_path + '/masks', exist_ok=True)
+        os.makedirs(storage_path + '/original_shapes', exist_ok=True)
+        os.makedirs(storage_path + '/dot_counts', exist_ok=True)
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):
         # Read image files iteratively
         img = imread(image_path + id_)[:, :, :img_ch]
         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
-        image_data[n] = preprocess_img(img)
-
-    if not os.path.exists(STORAGE_PATH + dataset_name):
-        os.makedirs(STORAGE_PATH + dataset_name)
-    save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
-    np.save(save_path, image_data)
-    print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
+        img = preprocess_img(img)
+        file_save_name = storage_path + '/images/' + os.path.splitext(id_)[0]
+        np.save(file_save_name, preprocess_img(img))
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
         # Read corresponding mask files iteratively
@@ -86,67 +87,17 @@ def prepare_and_save_data(image_path, mask_path, data_type, dataset_name, img_h=
         mask = np.zeros((img_h, img_w))
 
         mask_ = imread(mask_path + mask_file_name, as_gray=True)
-        mask_sizes.append([mask_.shape[0], mask_.shape[1]])
-        count_data[n] = np.array([np.count_nonzero(mask_)])
+        file_save_name = storage_path + '/original_shapes/' + os.path.splitext(id_)[0]
+        mask_original_shape = np.array([mask_.shape[0], mask_.shape[1]])
+        np.save(file_save_name, mask_original_shape)
+
+        file_save_name = storage_path + '/dot_counts/' + os.path.splitext(id_)[0]
+        mask_count = np.array([np.count_nonzero(mask_)])
+        np.save(file_save_name, mask_count)
+
 
         # original size div to scale size
         mask = mapping_rescale_dot(mask, mask_)
-
-        mask_data[n] = mask.reshape((img_h, img_w, 1))
-
-    save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
-    np.save(save_path, mask_data)
-    print("{0}.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
-    np.save(save_path + '_size', mask_sizes, allow_pickle=True)
-    print("{0}_size.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
-    np.save(save_path + '_count', count_data)
-    print("{0}_count.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
-
-
-def load_train_data(dataset_name, is_dots_expanded=True, expand_size=1):
-    file_path = STORAGE_PATH + dataset_name
-
-    X_train = np.load(file_path + '/' + 'X_train.npy')
-    Y_train = np.load(file_path + '/' + 'Y_train.npy')
-    Y_train_count = np.load(file_path + '/' + 'Y_train_count.npy')
-
-    if is_dots_expanded:
-        Y_train = expand_labels(Y_train, distance=expand_size)
-
-    return {
-        'train_data': X_train,
-        'train_label_data': Y_train,
-        'train_count_label_data': Y_train_count
-    }
-
-def load_test_data(dataset_name, is_dots_expanded=True, expand_size=1):
-    file_path = STORAGE_PATH + dataset_name
-
-    X_test = np.load(file_path + '/' + 'X_test.npy')
-    Y_test = np.load(file_path + '/' + 'Y_test.npy')
-    Y_test_count = np.load(file_path + '/' + 'Y_test_count.npy')
-
-    if is_dots_expanded:
-        Y_test = expand_labels(Y_test, distance=expand_size)
-
-    return {
-        'test_data': X_test,
-        'test_label_data': Y_test,
-        'test_count_label_data': Y_test_count
-    }
-
-def load_val_data(dataset_name, is_dots_expanded=True, expand_size=1):
-    file_path = STORAGE_PATH + dataset_name
-
-    X_val = np.load(file_path + '/' + 'X_val.npy')
-    Y_val = np.load(file_path + '/' + 'Y_val.npy')
-    Y_val_count = np.load(file_path + '/' + 'Y_val_count.npy')
-
-    if is_dots_expanded:
-        Y_val = expand_labels(Y_val, distance=expand_size)
-
-    return {
-        'val_data': X_val,
-        'val_label_data': Y_val,
-        'val_count_label_data': Y_val_count
-    }
+        mask = mask.reshape((img_h, img_w, 1))
+        file_save_name = storage_path + '/masks/' + os.path.splitext(id_)[0]
+        np.save(file_save_name, preprocess_img(mask))

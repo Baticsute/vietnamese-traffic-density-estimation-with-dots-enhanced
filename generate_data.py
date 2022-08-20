@@ -17,9 +17,9 @@ TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 data_loader.prepare_and_save_data(
+    data_type='train',
     image_path=TRAIN_PATH_IMAGES,
     mask_path=TRAIN_PATH_MASKS,
-    data_type='train',
     dataset_name='final_data_color',
     img_h=192,
     img_w=256,
@@ -27,9 +27,9 @@ data_loader.prepare_and_save_data(
 )
 
 data_loader.prepare_and_save_data(
+    data_type='test',
     image_path=TEST_PATH_IMAGES,
     mask_path=TEST_PATH_MASKS,
-    data_type='test',
     dataset_name='final_data_color',
     img_h=192,
     img_w=256,
