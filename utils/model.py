@@ -337,7 +337,9 @@ def load_pretrained_model(model_filename):
         "dice_coef_loss": dice_coef_loss,
         "dice_coef": dice_coef,
         "soft_dice_coef": soft_dice_coef,
-        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
+        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError,
+        "mse_metric": mse_metric,
+        "mae_metric": mae_metric
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -350,41 +352,28 @@ def evaluate_model(model_filename, test_data):
     Evaluate the best model on the validation dataset
     """
 
-    X_test = test_data['test_data']
-    Y_test = test_data['test_label_data']
-    Y_test_count = test_data['test_count_label_data']
-
     custom_objects = {
         "combined_dice_ce_loss": combined_dice_ce_loss,
         "dice_coef_loss": dice_coef_loss,
         "dice_coef": dice_coef,
         "soft_dice_coef": soft_dice_coef,
-        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError
+        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError,
+        "mse_metric": mse_metric,
+        "mae_metric": mae_metric
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
 
-    loss_weight = 0.8
     model.compile(
         optimizer='adam',
-        loss={
-            'count_output': tf.keras.losses.MeanSquaredError(),
-            'mask_output': dice_coef_loss
-        },
-        metrics={
-            'count_output': [tf.keras.metrics.MeanAbsoluteError()],
-            'mask_output': [dice_coef, soft_dice_coef]
-        }
+        loss=[dice_coef_loss, tf.keras.losses.MeanSquaredError()],
+        loss_weights=[0.5, 0.5],
+        metrics=[mse_metric, mae_metric, dice_coef_loss, dice_coef],
     )
 
     print("Evaluating model on test data. Please wait...")
     metrics = model.evaluate(
-        x=X_test,
-        y={
-            'count_output': Y_test_count,
-            'mask_output': Y_test
-        },
-        batch_size=8,
+        test_data,
         verbose=1
     )
 
@@ -398,11 +387,10 @@ def predict(model, image):
     img_h = input_shape[1]
     img_w = input_shape[2]
     img = resize(image, (img_h, img_w), mode='constant', preserve_range=True)
-    img = (img - img.mean()) / img.std()
+    img = img / 255.0
     img = np.expand_dims(img, axis=0)
 
-    count_output, mask_output = model.predict(img)
-    density_amount = count_output[0][0]
-    mask = np.around(mask_output[0])
+    mask_output = model.predict(img)
+    mask = mask_output[0]
 
-    return density_amount, mask
+    return mask
