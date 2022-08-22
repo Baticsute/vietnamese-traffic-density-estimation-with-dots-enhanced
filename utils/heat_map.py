@@ -32,8 +32,16 @@ class HeatMap:
         self.heat_map = heatmap_image_resized
 
     # Plot the figure
-    def plot(self, transparency=0.7, color_map='bwr',
-             show_axis=False, show_original=False, show_colorbar=False, width_pad=0):
+    def plot(
+            self,
+            transparency=0.5,
+            color_map='jet',
+            show_axis=False,
+            show_original=False,
+            show_colorbar=False,
+            width_pad=0,
+            figure_size=(10, 20)
+    ):
 
         # If show_original is True, then subplot first figure as orginal image
         # Set x,y to let the heatmap plot in the second subfigure,
@@ -48,10 +56,11 @@ class HeatMap:
             x, y = 1, 1
 
         # Plot the heatmap
+        plt.figure(figsize=figure_size)
         plt.subplot(1, x, y)
         if not show_axis:
             plt.axis('off')
-        plt.imshow(self.image)
+        plt.imshow(self.image, cmap='gray')
         plt.imshow(self.heat_map / 255, alpha=transparency, cmap=color_map)
         if show_colorbar:
             plt.colorbar()
