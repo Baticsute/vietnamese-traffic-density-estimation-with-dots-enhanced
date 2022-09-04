@@ -5,7 +5,7 @@ ROOT_PATH = str(pathlib.Path().absolute())
 DATA_STORAGE_PATH = '/data_storage/'
 STORAGE_PATH = ROOT_PATH + DATA_STORAGE_PATH
 
-DATASET_PATH = '/datasets/final_data'
+DATASET_PATH = '/datasets/mini_data'
 FINAL_DATASET_PATH = ROOT_PATH + DATASET_PATH
 
 TRAIN_PATH_IMAGES = FINAL_DATASET_PATH + '/train/images/'
@@ -20,7 +20,8 @@ data_loader.prepare_and_save_bulk_data(
     data_type='train',
     image_path=TRAIN_PATH_IMAGES,
     mask_path=TRAIN_PATH_MASKS,
-    dataset_name='final_data_color',
+    dataset_name='mini_data',
+    train_val_split_size=0.1,
     img_h=192,
     img_w=256,
     img_ch=3
@@ -30,7 +31,7 @@ data_loader.prepare_and_save_bulk_data(
     data_type='test',
     image_path=TEST_PATH_IMAGES,
     mask_path=TEST_PATH_MASKS,
-    dataset_name='final_data_color',
+    dataset_name='mini_data',
     img_h=192,
     img_w=256,
     img_ch=3

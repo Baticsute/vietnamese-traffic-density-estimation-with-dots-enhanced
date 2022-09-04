@@ -104,11 +104,17 @@ def mae_metric(y_true, y_pred, axis=(0, 1)):
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-
 def mse_metric(y_true, y_pred, axis=(0, 1)):
     return tf.square(
         tf.reduce_sum(y_pred, axis=axis) - tf.reduce_sum(y_true, axis=axis)
     )
+
+def mse_loss(y_true, y_pred):
+    mse = tf.keras.losses.MeanSquaredError()
+    h_resize, w_resize = y_pred.shape[0], y_pred.shape[1]
+    y_true_resize = tf.image.resize(y_true, (h_resize, w_resize))
+
+    return mse(y_true_resize, y_pred)
 
 
 def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
@@ -151,8 +157,8 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
     model = Model(inputs=vgg16_model.input, outputs=x)
     model.compile(
         optimizer=optimizer,
-        loss=tf.keras.losses.MeanSquaredError(),
-        metrics=[mae_metric]
+        loss=mse_loss,
+        metrics=[mse_metric, mae_metric]
     )
 
     return model
@@ -271,19 +277,10 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
 
     model.summary()
 
-    X_train = train_data['train_data']
-    Y_train = train_data['train_label_data']
-    Y_train_count = train_data['train_count_label_data']
-
-    validation_data = None
-    if (valid_data != None):
-        validation_data = (valid_data['val_data'], valid_data['val_label_data'])
-
-    if (validation_data != None):
+    if valid_data is not None:
         model.fit(
-            x=X_train,
-            y=Y_train,
-            validation_data=validation_data,
+            train_data,
+            validation_data=valid_data,
             batch_size=batch_size,
             epochs=n_epochs,
             verbose=0,
@@ -291,9 +288,7 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
         )
     else:
         model.fit(
-            x=X_train,
-            y=Y_train,
-            validation_split=VALIDATION_SIZE_SPLIT,
+            train_data,
             batch_size=batch_size,
             epochs=n_epochs,
             verbose=0,

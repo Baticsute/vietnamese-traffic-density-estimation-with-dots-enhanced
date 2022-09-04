@@ -7,7 +7,11 @@ import numpy as np
 from tqdm import tqdm
 from skimage.io import imread
 from skimage.transform import resize
-from skimage.segmentation import expand_labels
+from sklearn.model_selection import train_test_split
+
+import gc
+
+import cv2
 
 ROOT_PATH = str(pathlib.Path().absolute())
 DATA_STORAGE_PATH = '/data_storage/'
@@ -95,17 +99,34 @@ def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=
         mask_count = np.array([np.count_nonzero(mask_)])
         np.save(file_save_name, mask_count)
 
-
         # original size div to scale size
         mask = mapping_rescale_dot(mask, mask_)
         mask = mask.reshape((img_h, img_w, 1))
         file_save_name = storage_path + '/masks/' + os.path.splitext(id_)[0]
         np.save(file_save_name, mask)
 
-def prepare_and_save_bulk_data(image_path, mask_path, data_type, dataset_name, img_h=96, img_w=128, img_ch=1):
+
+def prepare_and_save_bulk_data(
+        image_path,
+        mask_path,
+        data_type,
+        dataset_name,
+        train_val_split_size=0.2,
+        img_h=96,
+        img_w=128,
+        img_ch=1
+):
     sys.stdout.flush()
 
     file_ids = next(os.walk(image_path))[2]
+    val_ids = None
+    image_val_files_type = None
+    mask_val_files_type = None
+
+    if data_type == 'train' and train_val_split_size > 0:
+        file_ids, val_ids = train_test_split(file_ids, test_size=train_val_split_size, random_state=2022)
+        image_val_files_type = 'X_val'
+        mask_val_files_type = 'Y_val'
     # X_train, Y_train or X_test, Y_test etc.
     image_files_type = 'X_' + data_type
     mask_files_type = 'Y_' + data_type
@@ -115,9 +136,19 @@ def prepare_and_save_bulk_data(image_path, mask_path, data_type, dataset_name, i
     count_data = np.zeros((len(file_ids), 1), dtype=np.float32)
     mask_sizes = []
 
+    image_val_data = None
+    mask_val_data = None
+    count_val_data = None
+    mask_val_sizes = None
+    if val_ids is not None:
+        image_val_data = np.zeros((len(val_ids), img_h, img_w, img_ch), dtype=np.float32)
+        mask_val_data = np.zeros((len(val_ids), img_h, img_w, 1), dtype=np.float32)
+        count_val_data = np.zeros((len(val_ids), 1), dtype=np.float32)
+        mask_val_sizes = []
+
     if not os.path.exists(STORAGE_PATH + dataset_name):
         os.makedirs(STORAGE_PATH + dataset_name)
-    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Image data preparing ..'):
+    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc=data_type + ' image data preparing ..'):
         # Read image files iteratively
         img = imread(image_path + id_)[:, :, :img_ch]
         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
@@ -125,9 +156,24 @@ def prepare_and_save_bulk_data(image_path, mask_path, data_type, dataset_name, i
 
     save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
     np.save(save_path, image_data)
+    del image_data
+    gc.collect()
     print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
 
-    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc='Mask data preparing ..'):
+    if val_ids is not None:
+        for n, id_ in tqdm(enumerate(val_ids), total=len(val_ids), desc='validation image data preparing ..'):
+            # Read image files iteratively
+            img = imread(image_path + id_)[:, :, :img_ch]
+            img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
+            image_val_data[n] = preprocess_img(img)
+
+        save_path = STORAGE_PATH + dataset_name + '/' + image_val_files_type
+        np.save(save_path, image_val_data)
+        del image_val_data
+        gc.collect()
+        print("{0}.npy has been saved at {1} ".format(image_val_files_type, STORAGE_PATH + dataset_name))
+
+    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc=data_type + ' mask data preparing ..'):
         # Read corresponding mask files iteratively
         mask_file_name = os.path.splitext(id_)[0] + '.png'
         mask = np.zeros((img_h, img_w))
@@ -148,3 +194,59 @@ def prepare_and_save_bulk_data(image_path, mask_path, data_type, dataset_name, i
     print("{0}_size.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
     np.save(save_path + '_count', count_data)
     print("{0}_count.npy has been saved at {1} ".format(mask_files_type, STORAGE_PATH + dataset_name))
+    del mask_data
+    del mask_sizes
+    del count_data
+    gc.collect()
+
+    if val_ids is not None:
+        for n, id_ in tqdm(enumerate(val_ids), total=len(val_ids), desc='validation mask data preparing ..'):
+            # Read corresponding mask files iteratively
+            mask_file_name = os.path.splitext(id_)[0] + '.png'
+            mask = np.zeros((img_h, img_w))
+
+            mask_ = imread(mask_path + mask_file_name, as_gray=True)
+            mask_val_sizes.append([mask_.shape[0], mask_.shape[1]])
+            count_val_data[n] = np.array([np.count_nonzero(mask_)])
+
+            # original size div to scale size
+            mask = mapping_rescale_dot(mask, mask_)
+
+            mask_val_data[n] = mask.reshape((img_h, img_w, 1))
+
+        save_path = STORAGE_PATH + dataset_name + '/' + mask_val_files_type
+        np.save(save_path, mask_val_data)
+        print("{0}.npy has been saved at {1} ".format(mask_val_files_type, STORAGE_PATH + dataset_name))
+        np.save(save_path + '_size', mask_val_sizes, allow_pickle=True)
+        print("{0}_size.npy has been saved at {1} ".format(mask_val_files_type, STORAGE_PATH + dataset_name))
+        np.save(save_path + '_count', count_val_data)
+        print("{0}_count.npy has been saved at {1} ".format(mask_val_files_type, STORAGE_PATH + dataset_name))
+        del mask_val_data
+        del mask_val_sizes
+        del count_val_data
+        gc.collect()
+
+
+def load_train_bulk_data(dataset_name):
+    train_data_path = STORAGE_PATH + dataset_name + '/X_train.npy'
+    train_mask_path = STORAGE_PATH + dataset_name + '/Y_train.npy'
+    val_data_path = STORAGE_PATH + dataset_name + '/X_val.npy'
+    val_mask_path = STORAGE_PATH + dataset_name + '/Y_val.npy'
+
+    train_data = np.load(train_data_path)
+    train_mask = np.load(train_mask_path)
+
+    val_data = np.load(val_data_path)
+    val_mask = np.load(val_mask_path)
+
+    return (train_data, train_mask), (val_data, val_mask)
+
+
+def load_test_bulk_data(dataset_name):
+    test_data_path = STORAGE_PATH + dataset_name + '/X_test.npy'
+    test_mask_path = STORAGE_PATH + dataset_name + '/Y_test.npy'
+
+    test_data = np.load(test_data_path)
+    test_mask = np.load(test_mask_path)
+
+    return test_data, test_mask
