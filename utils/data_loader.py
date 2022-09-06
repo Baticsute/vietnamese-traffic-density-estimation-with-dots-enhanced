@@ -9,6 +9,9 @@ from skimage.io import imread
 from skimage.transform import resize
 from sklearn.model_selection import train_test_split
 
+import scipy
+from scipy.ndimage.filters import gaussian_filter
+
 import gc
 
 import cv2
@@ -27,6 +30,46 @@ VALI_PATH_IMAGES = FINAL_DATASET_PATH + '/validation/images/'
 TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train/masks/'
 TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
+
+def gaussian_filter_density(ground_truth_img, points, k_nearest=4, beta=0.3, leafsize=2048, fixed_sigma=None):
+    '''
+    This code use k-nearst, will take one minute or more to generate a density-map with one thousand people.
+    points: a two-dimension list of pedestrians' annotation with the order [[col,row],[col,row],...].
+    img_shape: the shape of the image, same as the shape of required density-map. (row,col). Note that can not have channel.
+    return:
+    density: the density-map we want. Same shape as input image but only has one channel.
+    example:
+    points: three pedestrians with annotation:[[163,53],[175,64],[189,74]].
+    img_shape: (768,1024) 768 is row and 1024 is column.
+    '''
+    img_shape = [ground_truth_img.shape[0], ground_truth_img.shape[1]]
+    density = np.zeros(img_shape, dtype=np.float32)
+    gt_count = len(points)
+    if gt_count == 0:
+        return density
+
+    # build kdtree
+    tree = scipy.spatial.KDTree(points.copy(), leafsize=leafsize)
+    # query kdtree
+    distances, locations = tree.query(points, k=k_nearest, workers=8)
+
+    for i, pt in enumerate(points):
+        pt2d = np.zeros(img_shape, dtype=np.float32)
+        if int(pt[1]) < img_shape[0] and int(pt[0]) < img_shape[1]:
+            pt2d[int(pt[1]), int(pt[0])] = 1.
+        else:
+            continue
+        if gt_count > 1:
+            k = k_nearest + 1
+            if gt_count < k_nearest:
+                k = gt_count + 1
+            sigma = (np.average(distances[i][1: int(k)])) * beta
+        else:
+            sigma = np.sum(ground_truth_img)  #case: 1 point
+        if fixed_sigma is not None:
+            sigma = fixed_sigma
+        density += scipy.ndimage.filters.gaussian_filter(pt2d, sigma, mode='constant')
+    return density
 
 def preprocess_img(img):
     """
@@ -53,11 +96,10 @@ def mapping_rescale_dot(mask_scale, mask_original):
     non_zero_points[1] = non_zero_points[1] * scale_factor_w
     non_zero_points = np.transpose(non_zero_points)
     for point in non_zero_points:
-        x = point[0]
-        y = point[1]
+        x, y = point[0], point[1]
         mask_scale[x][y] = 1.0
 
-    return mask_scale
+    return mask_scale, non_zero_points
 
 
 def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=96, img_w=128, img_ch=1):
@@ -100,10 +142,11 @@ def prepare_and_save_data(data_type, image_path, mask_path, dataset_name, img_h=
         np.save(file_save_name, mask_count)
 
         # original size div to scale size
-        mask = mapping_rescale_dot(mask, mask_)
-        mask = mask.reshape((img_h, img_w, 1))
+        mask, points = mapping_rescale_dot(mask, mask_)
+        density_map = gaussian_filter_density(mask, np.fliplr(points), k_nearest=3, fixed_sigma=None)
+        density_map = density_map.reshape((img_h, img_w, 1))
         file_save_name = storage_path + '/masks/' + os.path.splitext(id_)[0]
-        np.save(file_save_name, mask)
+        np.save(file_save_name, density_map)
 
 
 def prepare_and_save_bulk_data(
@@ -148,30 +191,30 @@ def prepare_and_save_bulk_data(
 
     if not os.path.exists(STORAGE_PATH + dataset_name):
         os.makedirs(STORAGE_PATH + dataset_name)
-    for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc=data_type + ' image data preparing ..'):
-        # Read image files iteratively
-        img = imread(image_path + id_)[:, :, :img_ch]
-        img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
-        image_data[n] = preprocess_img(img)
-
-    save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
-    np.save(save_path, image_data)
-    del image_data
-    gc.collect()
-    print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
-
-    if val_ids is not None:
-        for n, id_ in tqdm(enumerate(val_ids), total=len(val_ids), desc='validation image data preparing ..'):
-            # Read image files iteratively
-            img = imread(image_path + id_)[:, :, :img_ch]
-            img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
-            image_val_data[n] = preprocess_img(img)
-
-        save_path = STORAGE_PATH + dataset_name + '/' + image_val_files_type
-        np.save(save_path, image_val_data)
-        del image_val_data
-        gc.collect()
-        print("{0}.npy has been saved at {1} ".format(image_val_files_type, STORAGE_PATH + dataset_name))
+    # for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc=data_type + ' image data preparing ..'):
+    #     # Read image files iteratively
+    #     img = imread(image_path + id_)[:, :, :img_ch]
+    #     img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
+    #     image_data[n] = preprocess_img(img)
+    #
+    # save_path = STORAGE_PATH + dataset_name + '/' + image_files_type
+    # np.save(save_path, image_data)
+    # del image_data
+    # gc.collect()
+    # print("{0}.npy has been saved at {1} ".format(image_files_type, STORAGE_PATH + dataset_name))
+    #
+    # if val_ids is not None:
+    #     for n, id_ in tqdm(enumerate(val_ids), total=len(val_ids), desc='validation image data preparing ..'):
+    #         # Read image files iteratively
+    #         img = imread(image_path + id_)[:, :, :img_ch]
+    #         img = resize(img, (img_h, img_w), mode='constant', preserve_range=True)
+    #         image_val_data[n] = preprocess_img(img)
+    #
+    #     save_path = STORAGE_PATH + dataset_name + '/' + image_val_files_type
+    #     np.save(save_path, image_val_data)
+    #     del image_val_data
+    #     gc.collect()
+    #     print("{0}.npy has been saved at {1} ".format(image_val_files_type, STORAGE_PATH + dataset_name))
 
     for n, id_ in tqdm(enumerate(file_ids), total=len(file_ids), desc=data_type + ' mask data preparing ..'):
         # Read corresponding mask files iteratively
@@ -183,9 +226,10 @@ def prepare_and_save_bulk_data(
         count_data[n] = np.array([np.count_nonzero(mask_)])
 
         # original size div to scale size
-        mask = mapping_rescale_dot(mask, mask_)
+        mask, points = mapping_rescale_dot(mask, mask_)
+        density_map = gaussian_filter_density(mask, np.fliplr(points), k_nearest=3, fixed_sigma=None)
 
-        mask_data[n] = mask.reshape((img_h, img_w, 1))
+        mask_data[n] = density_map.reshape((img_h, img_w, 1))
 
     save_path = STORAGE_PATH + dataset_name + '/' + mask_files_type
     np.save(save_path, mask_data)
@@ -210,9 +254,10 @@ def prepare_and_save_bulk_data(
             count_val_data[n] = np.array([np.count_nonzero(mask_)])
 
             # original size div to scale size
-            mask = mapping_rescale_dot(mask, mask_)
+            mask, points = mapping_rescale_dot(mask, mask_)
+            density_map = gaussian_filter_density(mask, np.fliplr(points), k_nearest=3, fixed_sigma=None)
 
-            mask_val_data[n] = mask.reshape((img_h, img_w, 1))
+            mask_val_data[n] = density_map.reshape((img_h, img_w, 1))
 
         save_path = STORAGE_PATH + dataset_name + '/' + mask_val_files_type
         np.save(save_path, mask_val_data)
