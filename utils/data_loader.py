@@ -61,9 +61,10 @@ def gaussian_filter_density(ground_truth_img, points, k_nearest=4, beta=0.3, lea
             continue
         if gt_count > 1:
             k = k_nearest + 1
-            if gt_count < k_nearest:
-                k = gt_count + 1
-            sigma = (np.average(distances[i][1: int(k)])) * beta
+            if gt_count <= k_nearest:
+                sigma = (np.average(distances[i][1: gt_count - 1])) * beta
+            else:
+                sigma = (np.average(distances[i][1: k])) * beta
         else:
             sigma = np.sum(ground_truth_img)  #case: 1 point
         if fixed_sigma is not None:

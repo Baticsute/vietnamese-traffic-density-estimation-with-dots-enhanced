@@ -27,12 +27,12 @@ data_loader.prepare_and_save_bulk_data(
     img_ch=3
 )
 
-# data_loader.prepare_and_save_bulk_data(
-#     data_type='test',
-#     image_path=TEST_PATH_IMAGES,
-#     mask_path=TEST_PATH_MASKS,
-#     dataset_name='final_data',
-#     img_h=192,
-#     img_w=256,
-#     img_ch=3
-# )
+data_loader.prepare_and_save_bulk_data(
+    data_type='test',
+    image_path=TEST_PATH_IMAGES,
+    mask_path=TEST_PATH_MASKS,
+    dataset_name='final_data',
+    img_h=192,
+    img_w=256,
+    img_ch=3
+)
