@@ -19,28 +19,13 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import numpy as np
 
+from tensorflow.keras import backend as K
+
 tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.2
 
-
-def gaussian_kernel(size: int, mean: float, std: float):
-    """Makes 2D gaussian Kernel for convolution."""
-
-    d = tfp.distributions.Normal(mean, std)
-
-    vals = d.prob(tf.range(start=-size, limit=size + 1, dtype=tf.float32))
-
-    gauss_kernel = tf.einsum(
-        'i,j->ij',
-        vals,
-        vals
-    )
-
-    return gauss_kernel / tf.reduce_sum(gauss_kernel)
-
-
-def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
+def dice_coef(target, prediction, axis=(1, 2), smooth=0.0001):
     """
     Sorenson Dice
     \frac{  2 \times \left | T \right | \cap \left | P \right |}{ \left | T \right | +  \left | P \right |  }
@@ -57,7 +42,7 @@ def dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
     return tf.reduce_mean(coef)
 
 
-def dice_coef_loss(target, prediction, axis=(0, 1), smooth=0.0001):
+def dice_coef_loss(target, prediction, axis=(1, 2), smooth=0.0001):
     """
     Sorenson (Soft) Dice loss
     Using -log(Dice) as the loss since it is better behaved.
@@ -74,7 +59,7 @@ def dice_coef_loss(target, prediction, axis=(0, 1), smooth=0.0001):
     return dice_loss
 
 
-def soft_dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
+def soft_dice_coef(target, prediction, axis=(1, 2), smooth=0.0001):
     """
     Sorenson (Soft) Dice  - Don't round the predictions
     \frac{  2 \times \left | T \right | \cap \left | P \right |}{ \left | T \right | +  \left | P \right |  }
@@ -89,8 +74,7 @@ def soft_dice_coef(target, prediction, axis=(0, 1), smooth=0.0001):
 
     return tf.reduce_mean(coef)
 
-
-def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1), smooth=0.0001):
+def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(1, 2), smooth=0.0001):
     """
     Combined Dice and Binary Cross Entropy Loss
     """
@@ -99,28 +83,54 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(0, 1)
            (1 - weight_dice_loss) * bce(target, prediction)
 
 
-def mae_metric(y_true, y_pred, axis=(0, 1)):
+def mae_metric(y_true, y_pred, axis=(1, 2)):
     return tf.abs(
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-def mse_metric(y_true, y_pred, axis=(0, 1)):
+
+def mse_metric(y_true, y_pred, axis=(1, 2)):
     return tf.square(
         tf.reduce_sum(y_pred, axis=axis) - tf.reduce_sum(y_true, axis=axis)
     )
 
-def mse_loss(y_true, y_pred):
-    mse = tf.keras.losses.MeanSquaredError()
-    h_resize, w_resize = y_pred.shape[0], y_pred.shape[1]
-    y_true_resize = tf.image.resize(y_true, (h_resize, w_resize))
+def metric_density_mae(y_true, y_pred, axis=(1, 2, 3)):
+    return tf.reduce_mean(
+        tf.abs(
+            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
+        )
+    )
 
-    return mse(y_true_resize, y_pred)
+def metric_density_mse(y_true, y_pred, axis=(1, 2, 3)):
+    return tf.reduce_mean(
+        tf.square(
+            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
+        )
+    )
+
+def loss_euclidean_distance(y_true, y_pred):
+    """ Computes the euclidean distance between two tensors.
+    The euclidean distance or $L^2$ distance between points $p$ and $q$ is the length of the line segment
+    connecting them.
+    $$
+    distance(q,p) =\\sqrt{\\sum_{i=1}^{n}\\left(q_{i}-p_{i}\\right)^{2}}
+    $$
+    Args:
+        y_true: a ``Tensor``
+        y_pred: a ``Tensor``
+        dim: dimension along which the euclidean distance is computed
+    Returns:
+        ``Tensor``: a ``Tensor`` with the euclidean distances between the two tensors
+    """
+    distance = tf.norm(y_pred - y_pred, axis=-1, ord='euclidean')
+    distance = tf.reduce_sum(distance, axis=(1, 2))
+
+    return tf.reduce_mean(distance) / 2
 
 
 def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
-    # sgd = SGD(lr=1e-7, decay=5 * 1e-4, momentum=0.95)
+    sgd_optimizer = SGD(lr=1e-6, decay=5 * 1e-4, momentum=0.95)
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
-    optimizer = Adam(lr=1e-5)
     vgg16_model = VGG16(weights='imagenet', include_top=False, input_tensor=inputs)
     # model = Model(inputs=base_model.input, outputs=base_model.get_layer('block4_pool').output)
     x = vgg16_model.get_layer('block4_conv3').output
@@ -156,9 +166,9 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
     x = Activation('relu')(x)
     model = Model(inputs=vgg16_model.input, outputs=x)
     model.compile(
-        optimizer=optimizer,
-        loss=mse_loss,
-        metrics=[mse_metric, mae_metric]
+        optimizer=sgd_optimizer,
+        loss=loss_euclidean_distance,
+        metrics=[metric_density_mae, metric_density_mse]
     )
 
     return model
@@ -167,6 +177,7 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     s = inputs
+    adam_optimizer = Adam(lr=1e-5)
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
     c1 = BatchNormalization()(c1)
@@ -239,10 +250,9 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
     model = Model(inputs=[inputs], outputs=[masks], name="UNet_V1_Vehicle_Counting")
 
     model.compile(
-        optimizer='adam',
-        loss=[dice_coef_loss, tf.keras.losses.MeanSquaredError()],
-        loss_weights=[0.5, 0.5],
-        metrics=[mse_metric, mae_metric, dice_coef_loss, dice_coef],
+        optimizer=adam_optimizer,
+        loss=loss_euclidean_distance,
+        metrics=[metric_density_mae, metric_density_mse]
     )
 
     return model
@@ -328,13 +338,9 @@ def load_pretrained_model(model_filename):
     """
 
     custom_objects = {
-        "combined_dice_ce_loss": combined_dice_ce_loss,
-        "dice_coef_loss": dice_coef_loss,
-        "dice_coef": dice_coef,
-        "soft_dice_coef": soft_dice_coef,
-        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError,
-        "mse_metric": mse_metric,
-        "mae_metric": mae_metric
+        "loss_euclidean_distance": loss_euclidean_distance,
+        "metric_density_mae": metric_density_mae,
+        "metric_density_mse": metric_density_mse,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -348,22 +354,17 @@ def evaluate_model(model_filename, test_data):
     """
 
     custom_objects = {
-        "combined_dice_ce_loss": combined_dice_ce_loss,
-        "dice_coef_loss": dice_coef_loss,
-        "dice_coef": dice_coef,
-        "soft_dice_coef": soft_dice_coef,
-        "mean_absolute_error": tf.keras.losses.MeanAbsoluteError,
-        "mse_metric": mse_metric,
-        "mae_metric": mae_metric
+        "loss_euclidean_distance": loss_euclidean_distance,
+        "metric_density_mae": metric_density_mae,
+        "metric_density_mse": metric_density_mse,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
 
     model.compile(
         optimizer='adam',
-        loss=[dice_coef_loss, tf.keras.losses.MeanSquaredError()],
-        loss_weights=[0.5, 0.5],
-        metrics=[mse_metric, mae_metric, dice_coef_loss, dice_coef],
+        loss=loss_euclidean_distance,
+        metrics=[metric_density_mae, metric_density_mse]
     )
 
     print("Evaluating model on test data. Please wait...")

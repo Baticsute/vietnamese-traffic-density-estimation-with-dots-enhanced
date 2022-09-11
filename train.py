@@ -56,24 +56,24 @@ batch_size = 32
 #     n_channels=3
 # )
 
-(train_data, train_mask), (val_data, val_mask) = data_loader.load_train_bulk_data('mini_data')
+(train_data, train_mask), (val_data, val_mask) = data_loader.load_train_bulk_data('unet_final_data')
 
 train_dataset = tf.data.Dataset.from_tensor_slices((train_data, train_mask))
 val_dataset = tf.data.Dataset.from_tensor_slices((val_data, val_mask))
 
-BATCH_SIZE = 1
-SHUFFLE_BUFFER_SIZE = 5
+BATCH_SIZE = 32
+SHUFFLE_BUFFER_SIZE = 100
 
 train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
 validation_dataset = val_dataset.batch(BATCH_SIZE)
 
-csrnet = model.get_csrnet_model(img_h=192, img_w=256, img_ch=3)
+net = model.get_unet_model(img_h=192, img_w=256, img_ch=3)
 
 model.train_model(
-    model=csrnet,
+    model=net,
     train_data=train_dataset,
     valid_data=validation_dataset,
-    n_epochs=5,
-    model_checkpoint_filename='model_csrnet_test_checkpoint',
+    n_epochs=500,
+    model_checkpoint_filename='model_unet_checkpoint',
     patience=50
 )
