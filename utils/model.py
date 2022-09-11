@@ -82,33 +82,17 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(1, 2)
     return weight_dice_loss * dice_coef_loss(target, prediction, axis, smooth) + \
            (1 - weight_dice_loss) * bce(target, prediction)
 
-
-def mae_metric(y_true, y_pred, axis=(1, 2)):
+def metric_density_mae(y_true, y_pred, axis=(1, 2, 3)):
     return tf.abs(
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-
-def mse_metric(y_true, y_pred, axis=(1, 2)):
-    return tf.square(
-        tf.reduce_sum(y_pred, axis=axis) - tf.reduce_sum(y_true, axis=axis)
-    )
-
-def metric_density_mae(y_true, y_pred, axis=(1, 2, 3)):
-    return tf.reduce_mean(
-        tf.abs(
-            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
-        )
-    )
-
 def metric_density_mse(y_true, y_pred, axis=(1, 2, 3)):
-    return tf.reduce_mean(
-        tf.square(
-            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
-        )
+    return tf.square(
+        tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-def loss_euclidean_distance(y_true, y_pred):
+def loss_euclidean_distance(y_true, y_pred, smooth=0.0001):
     """ Computes the euclidean distance between two tensors.
     The euclidean distance or $L^2$ distance between points $p$ and $q$ is the length of the line segment
     connecting them.
@@ -122,10 +106,9 @@ def loss_euclidean_distance(y_true, y_pred):
     Returns:
         ``Tensor``: a ``Tensor`` with the euclidean distances between the two tensors
     """
-    distance = tf.norm(y_pred - y_pred, axis=-1, ord='euclidean')
-    distance = tf.reduce_sum(distance, axis=(1, 2))
 
-    return tf.reduce_mean(distance) / 2
+    distance = tf.norm(y_pred - y_true, axis=-1, ord='euclidean')
+    return distance
 
 
 def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
@@ -177,7 +160,7 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     s = inputs
-    adam_optimizer = Adam(lr=1e-5)
+    adam_optimizer = Adam(lr=1e-4)
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
     c1 = BatchNormalization()(c1)
