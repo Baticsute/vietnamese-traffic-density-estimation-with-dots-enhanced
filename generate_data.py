@@ -5,14 +5,14 @@ ROOT_PATH = str(pathlib.Path().absolute())
 DATA_STORAGE_PATH = '/data_storage/'
 STORAGE_PATH = ROOT_PATH + DATA_STORAGE_PATH
 
-DATASET_PATH = '/datasets/mini_data'
+DATASET_PATH = '/datasets/trancos_v3_splitted_data'
 FINAL_DATASET_PATH = ROOT_PATH + DATASET_PATH
 
-TRAIN_PATH_IMAGES = FINAL_DATASET_PATH + '/train/images/'
+TRAIN_PATH_IMAGES = FINAL_DATASET_PATH + '/train_val/images/'
 TEST_PATH_IMAGES = FINAL_DATASET_PATH + '/test/images/'
 VALI_PATH_IMAGES = FINAL_DATASET_PATH + '/validation/images/'
 
-TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train/masks/'
+TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train_val/masks/'
 TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
@@ -20,23 +20,19 @@ data_loader.prepare_and_save_bulk_data(
     data_type='train',
     image_path=TRAIN_PATH_IMAGES,
     mask_path=TRAIN_PATH_MASKS,
-    dataset_name='unet_mini_data',
-    train_val_split_size=0.3,
+    dataset_name='trancos_v3_data',
+    train_val_split_size=0.2,
     img_h=192,
     img_w=256,
-    img_ch=3,
-    is_imagenet_used=False,
-    model_name='unet'
+    img_ch=3
 )
 
 data_loader.prepare_and_save_bulk_data(
     data_type='test',
     image_path=TEST_PATH_IMAGES,
     mask_path=TEST_PATH_MASKS,
-    dataset_name='unet_mini_data',
+    dataset_name='trancos_v3_data',
     img_h=192,
     img_w=256,
-    img_ch=3,
-    is_imagenet_used=False,
-    model_name='unet'
+    img_ch=3
 )

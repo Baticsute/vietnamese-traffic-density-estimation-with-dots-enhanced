@@ -25,9 +25,10 @@ class HeatMap:
         # Convert back to numpy
         heatmap_image = Image.fromarray(heat_map * 255)
         heatmap_image_resized = heatmap_image.resize((width, height))
-        heatmap_image_resized = ndimage.gaussian_filter(heatmap_image_resized,
-                                                        sigma=(gaussian_std, gaussian_std),
-                                                        order=0)
+        if gaussian_std > 0:
+            heatmap_image_resized = ndimage.gaussian_filter(heatmap_image_resized,
+                                                            sigma=(gaussian_std, gaussian_std),
+                                                            order=0)
         heatmap_image_resized = np.asarray(heatmap_image_resized)
         self.heat_map = heatmap_image_resized
 
