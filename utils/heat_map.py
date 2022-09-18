@@ -23,6 +23,8 @@ class HeatMap:
         # Rezie the heat_map to the size of the input image
         # Apply the gausian filter for smoothing
         # Convert back to numpy
+        if np.ndim(heat_map) > 2:
+            heat_map = np.squeeze(heat_map, axis=-1)
         heatmap_image = Image.fromarray(heat_map * 255)
         heatmap_image_resized = heatmap_image.resize((width, height))
         if gaussian_std > 0:

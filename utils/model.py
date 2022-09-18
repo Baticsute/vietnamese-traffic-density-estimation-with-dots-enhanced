@@ -2,7 +2,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, UpSampling2D, BatchNormalization, SpatialDropout2D, \
     Dense, Dropout, \
-    Flatten, Activation, multiply, concatenate, MaxPooling2D, Average
+    Flatten, Activation, multiply, concatenate, MaxPooling2D, Average, Lambda
 
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
@@ -83,7 +83,7 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(1, 2)
            (1 - weight_dice_loss) * bce(target, prediction)
 
 
-def density_mae(y_true, y_pred, axis=(1, 2)):
+def density_mae(y_true, y_pred, axis=(1, 2, 3)):
     return tf.reduce_mean(
         tf.abs(
             tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
@@ -91,7 +91,7 @@ def density_mae(y_true, y_pred, axis=(1, 2)):
     )
 
 
-def density_mse(y_true, y_pred, axis=(1, 2)):
+def density_mse(y_true, y_pred, axis=(1, 2, 3)):
     return tf.reduce_mean(
         tf.square(
             tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
@@ -147,9 +147,12 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False):
     adam_optimizer = Adam(lr=1e-4, decay=5e-3)
 
     input_flow = Input((img_h, img_w, img_ch), name='model_image_input')
-
+    dtype = tf.float32
+    x = Lambda(
+        lambda batch: (batch - tf.constant([0.485, 0.456, 0.406], dtype=dtype)) / tf.constant([0.229, 0.224, 0.225],
+                                                                                              dtype=dtype))(input_flow)
     # Encoder
-    x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(input_flow)
+    x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(x)
     x = BatchNormalization()(x) if BN else x
     x = Activation('relu')(x)
     x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(x)
@@ -284,19 +287,23 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False):
     model.compile(
         optimizer=adam_optimizer,
         loss=MSE_BCE,
-        metrics=[density_mae, density_mse]
+        metrics=[density_mae, density_mse, 'mae', 'mse']
     )
 
     return model
 
 
-def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
+def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
 
     input_flow = Input((img_h, img_w, img_ch), name='model_image_input')
     dilated_conv_kernel_initializer = RandomNormal(stddev=0.01)
 
     # front-end
-    x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', activation='relu')(input_flow)
+    dtype = tf.float32
+    x = Lambda(
+        lambda batch: (batch - tf.constant([0.485, 0.456, 0.406], dtype=dtype)) / tf.constant([0.229, 0.224, 0.225],
+                                                                                              dtype=dtype))(input_flow)
+    x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', activation='relu')(x)
     x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', activation='relu')(x)
     x = MaxPooling2D(pool_size=(2, 2))(x)
 
@@ -350,7 +357,7 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
     model.compile(
         optimizer=sgd_optimizer,
         loss=loss_euclidean_distance,
-        metrics=[density_mae, density_mse]
+        metrics=[density_mae, density_mse, 'mae', 'mse']
     )
 
     return model
@@ -359,7 +366,9 @@ def get_csrnet_model(img_h=96, img_w=128, img_ch=1):
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     s = inputs
-    adam_optimizer = Adam(lr=1e-7, decay=5e-3)
+    adam_optimizer = Adam()
+    # sgd_optimizer = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
+
     init = RandomNormal(stddev=0.01)
 
     c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer=init, padding='same')(s)
@@ -434,7 +443,7 @@ def get_unet_model(img_h=96, img_w=128, img_ch=1):
 
     model.compile(
         optimizer=adam_optimizer,
-        loss=EUCLID_BCE,
+        loss='binary_crossentropy',
         metrics=[density_mae, density_mse]
     )
 
@@ -463,7 +472,8 @@ def get_model_logging(model_log_dir='./logs'):
     return TensorBoard(log_dir=model_log_dir, write_graph=False)
 
 
-def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
+def train_model(model, train_data, valid_data=None,
+                n_epochs=100, steps_per_epoch=None, validation_steps=None,
                 model_checkpoint_filename='model_unet_checkpoint', patience=10, monitor='val_loss'):
     model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename, monitor=monitor)
     early_stopping = get_early_stopping(patience=patience, monitor=monitor)
@@ -471,24 +481,17 @@ def train_model(model, train_data, valid_data=None, batch_size=64, n_epochs=100,
 
     model.summary()
 
-    if valid_data is not None:
-        model.fit(
-            train_data,
-            validation_data=valid_data,
-            batch_size=batch_size,
-            epochs=n_epochs,
-            verbose=0,
-            callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
-        )
-    else:
-        model.fit(
-            train_data,
-            batch_size=batch_size,
-            epochs=n_epochs,
-            verbose=0,
-            callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)]
-        )
-
+    model.fit(
+        train_data,
+        validation_data=valid_data,
+        epochs=n_epochs,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        verbose=0,
+        callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)],
+        use_multiprocessing=True,
+        workers=16
+    )
 
 def train_generator_model(
         model,
@@ -522,6 +525,7 @@ def load_pretrained_model(model_filename):
     """
 
     custom_objects = {
+        "loss_euclidean_distance": loss_euclidean_distance,
         "MSE_BCE": MSE_BCE,
         "density_mse": density_mse,
         "density_mae": density_mae,
@@ -539,8 +543,8 @@ def evaluate_model(model_filename, test_data):
 
     custom_objects = {
         "loss_euclidean_distance": loss_euclidean_distance,
-        "metric_density_mae": density_mae,
-        "metric_density_mse": density_mse,
+        "density_mae": density_mae,
+        "density_mse": density_mse,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -548,7 +552,7 @@ def evaluate_model(model_filename, test_data):
     model.compile(
         optimizer='adam',
         loss=loss_euclidean_distance,
-        metrics=[density_mae, density_mse]
+        metrics=[density_mae, density_mse, 'mae', 'mse']
     )
 
     print("Evaluating model on test data. Please wait...")
