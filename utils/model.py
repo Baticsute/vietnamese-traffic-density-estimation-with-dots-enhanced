@@ -10,7 +10,7 @@ from skimage.transform import resize
 from tqdm.keras import TqdmCallback
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.optimizers import SGD, Adam
+from tensorflow.keras.optimizers import SGD, Adam, RMSprop
 
 from datetime import datetime
 
@@ -84,18 +84,13 @@ def combined_dice_ce_loss(target, prediction, weight_dice_loss=0.85, axis=(1, 2)
 
 
 def density_mae(y_true, y_pred, axis=(1, 2, 3)):
-    return tf.reduce_mean(
-        tf.abs(
-            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
-        )
+    return tf.abs(
+        tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
-
 def density_mse(y_true, y_pred, axis=(1, 2, 3)):
-    return tf.reduce_mean(
-        tf.square(
-            tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
-        )
+    return tf.square(
+        tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
 
@@ -141,7 +136,7 @@ def EUCLID_BCE(y_true, y_pred, alpha=100, beta=10):
     return alpha * euclid + beta * bce
 
 
-def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False):
+def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True):
     # Difference with original paper: padding 'valid vs same'
     conv_kernel_initializer = RandomNormal(stddev=0.01)
     adam_optimizer = Adam(lr=1e-4, decay=5e-3)
@@ -287,7 +282,7 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False):
     model.compile(
         optimizer=adam_optimizer,
         loss=MSE_BCE,
-        metrics=[density_mae, density_mse, 'mae', 'mse']
+        metrics=[density_mae, density_mse]
     )
 
     return model
@@ -353,11 +348,13 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
             counter_conv += 1
 
     sgd_optimizer = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
+    rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
+    adam_optimizer = Adam(lr=1e-7)
 
     model.compile(
-        optimizer=sgd_optimizer,
-        loss=loss_euclidean_distance,
-        metrics=[density_mae, density_mse, 'mae', 'mse']
+        optimizer=rms,
+        loss='binary_crossentropy',
+        metrics=[density_mae, density_mse]
     )
 
     return model
@@ -464,7 +461,7 @@ def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_che
         verbose=verbose,
         monitor=monitor,
         save_best_only=True,
-        mode='min'
+        mode=mode
     )
 
 
@@ -475,6 +472,7 @@ def get_model_logging(model_log_dir='./logs'):
 def train_model(model, train_data, valid_data=None,
                 n_epochs=100, steps_per_epoch=None, validation_steps=None,
                 model_checkpoint_filename='model_unet_checkpoint', patience=10, monitor='val_loss'):
+
     model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename, monitor=monitor)
     early_stopping = get_early_stopping(patience=patience, monitor=monitor)
     tensorboards = get_model_logging()
@@ -545,6 +543,7 @@ def evaluate_model(model_filename, test_data):
         "loss_euclidean_distance": loss_euclidean_distance,
         "density_mae": density_mae,
         "density_mse": density_mse,
+        "MSE_BCE": MSE_BCE,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -571,7 +570,7 @@ def predict(model, image):
     img_h = input_shape[1]
     img_w = input_shape[2]
     img = resize(image, (img_h, img_w), mode='constant', preserve_range=True)
-    img = img / 255.0
+    # img = img / 255.0
     img = np.expand_dims(img, axis=0)
 
     mask_output = model.predict(img)

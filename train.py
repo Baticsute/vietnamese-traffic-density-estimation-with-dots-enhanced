@@ -32,8 +32,9 @@ VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 BATCH_SIZE = 1
 BATCH_SAMPLE_SIZE = 64
+DATASET_LOOP = 10
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='mini_data', validation_split_size=0.0)
+dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1)
 
 train_input_data = dataset_dict['train']['images']
 train_output_data = dataset_dict['train']['density_maps']
@@ -46,8 +47,9 @@ train_dataset, train_size = data_loader.load_dataset(
     output_paths=train_output_data,
     output_type='density_maps',
     batch_size=BATCH_SIZE,
-    shuffle=True, repeat=False,
-    downsampling_size=8
+    shuffle=True,
+    downsampling_size=2,
+    buffer_size=512
 )
 
 validation_dataset, val_size = data_loader.load_dataset(
@@ -55,7 +57,8 @@ validation_dataset, val_size = data_loader.load_dataset(
     output_paths=validation_output_data,
     output_type='density_maps',
     batch_size=BATCH_SIZE,
-    shuffle=False, downsampling_size=8
+    shuffle=False,
+    downsampling_size=2
 )
 
 # for image, mask in train_dataset:
@@ -64,7 +67,7 @@ validation_dataset, val_size = data_loader.load_dataset(
 #     print(tf.reduce_sum(mask))
 
 
-net = model.get_csrnet_model(img_h=480, img_w=640, img_ch=3)
+net = model.get_wnet_model(img_h=480, img_w=640, img_ch=3)
 
 model.train_model(
     model=net,
@@ -72,8 +75,8 @@ model.train_model(
     valid_data=validation_dataset,
     steps_per_epoch=int(train_size / BATCH_SAMPLE_SIZE),
     validation_steps=val_size,
-    n_epochs=1280,
-    model_checkpoint_filename='model_CSRnet_model',
-    patience=50,
-    monitor='val_loss'
+    n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
+    model_checkpoint_filename='model_WNet_checkpoint',
+    patience=100,
+    monitor='val_density_mae'
 )

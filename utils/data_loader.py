@@ -370,7 +370,6 @@ def load_image(path):
 def load_density_map(path):
     dm = np.load(path.numpy().decode())
     dm = tf.convert_to_tensor(dm, dtype=TARGET_TYPE)
-    dm = tf.image.convert_image_dtype(dm, dtype=TARGET_TYPE)
 
     return dm
 
@@ -475,7 +474,6 @@ def gen_pre_process_func(downsampling=8, method='nearest'):
     batch_add = 1
     @tf.function
     def _pre_process_(img, gth):
-        img = img / tf.constant(255.0, dtype=tf.float32)
 
         if downsampling > 1:
             before_resize = tf.reduce_sum(gth)
@@ -500,7 +498,7 @@ def gen_pre_process_func(downsampling=8, method='nearest'):
 
 def load_dataset(input_paths=[], output_paths=[], output_type='density_maps',
                  batch_size=1, buffer_size=256,
-                 shuffle=False, repeat=True,
+                 shuffle=False,
                  downsampling_size=8, resize_method=tf.image.ResizeMethod.BILINEAR,
                  ):
     data_size = len(input_paths)
@@ -520,13 +518,11 @@ def load_dataset(input_paths=[], output_paths=[], output_type='density_maps',
         mask_data = mask_data.map(load_mask)
 
     dataset = tf.data.Dataset.zip((input_data, mask_data))
-    dataset = dataset.batch(batch_size)
 
     if shuffle:
-        dataset = dataset.shuffle(buffer_size)
-
-    if repeat:
-        dataset = dataset.repeat()
+        dataset = dataset.batch(batch_size).repeat().shuffle(buffer_size)
+    else:
+        dataset = dataset.batch(batch_size)
 
     dataset = dataset.map(
         gen_pre_process_func(downsampling=downsampling_size, method=resize_method)

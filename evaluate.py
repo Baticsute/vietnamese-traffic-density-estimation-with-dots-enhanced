@@ -14,29 +14,35 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
-ROOT_PATH = str(pathlib.Path().absolute())
-DATA_STORAGE_PATH = '/data_storage/'
-STORAGE_PATH = ROOT_PATH + DATA_STORAGE_PATH
 
-DATASET_PATH = '/datasets/final_data'
-FINAL_DATASET_PATH = ROOT_PATH + DATASET_PATH
 
-TRAIN_PATH_IMAGES = FINAL_DATASET_PATH + '/train/images/'
-TEST_PATH_IMAGES = FINAL_DATASET_PATH + '/test/images/'
-VALI_PATH_IMAGES = FINAL_DATASET_PATH + '/validation/images/'
+dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1)
 
-TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train/masks/'
-TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
-VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
+validation_input_data = dataset_dict['validation']['images']
+validation_output_data = dataset_dict['validation']['density_maps']
+
+test_input_data = dataset_dict['test']['images']
+test_output_data = dataset_dict['test']['density_maps']
 
 validation_dataset, val_size = data_loader.load_dataset(
-    'final_data', section='val',
-    batch_size=1, shuffle=False, downsampling_size=8
+    input_paths=validation_input_data,
+    output_paths=validation_output_data,
+    output_type='density_maps',
+    batch_size=1,
+    shuffle=False,
+    downsampling_size=2
 )
+
 
 test_dataset, test_size = data_loader.load_dataset(
-    'final_data', section='test',
-    batch_size=1, shuffle=False, downsampling_size=8
+    input_paths=test_input_data,
+    output_paths=test_output_data,
+    output_type='density_maps',
+    batch_size=1,
+    shuffle=False,
+    downsampling_size=2
 )
 
-model.evaluate_model('./model_checkpoints/model_CSRnet_model_09_15_2022_060843.h5', validation_dataset)
+model.evaluate_model('./model_checkpoints/model_WNet_checkpoint_09_19_2022_071819.h5', validation_dataset)
+
+model.evaluate_model('./model_checkpoints/model_WNet_checkpoint_09_19_2022_071819.h5', test_dataset)
