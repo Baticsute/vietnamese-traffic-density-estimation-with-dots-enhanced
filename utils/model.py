@@ -140,6 +140,7 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True):
     # Difference with original paper: padding 'valid vs same'
     conv_kernel_initializer = RandomNormal(stddev=0.01)
     adam_optimizer = Adam(lr=1e-4, decay=5e-3)
+    rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
 
     input_flow = Input((img_h, img_w, img_ch), name='model_image_input')
     dtype = tf.float32
@@ -280,8 +281,8 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True):
             counter_conv += 1
 
     model.compile(
-        optimizer=adam_optimizer,
-        loss=MSE_BCE,
+        optimizer=rms,
+        loss='binary_crossentropy',
         metrics=[density_mae, density_mse]
     )
 

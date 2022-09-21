@@ -30,7 +30,7 @@ validation_dataset, val_size = data_loader.load_dataset(
     output_type='density_maps',
     batch_size=1,
     shuffle=False,
-    downsampling_size=2
+    downsampling_size=8
 )
 
 
@@ -40,9 +40,9 @@ test_dataset, test_size = data_loader.load_dataset(
     output_type='density_maps',
     batch_size=1,
     shuffle=False,
-    downsampling_size=2
+    downsampling_size=8
 )
 
-model.evaluate_model('./model_checkpoints/model_WNet_checkpoint_09_19_2022_071819.h5', validation_dataset)
+model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_09_20_2022_200139.h5', validation_dataset)
 
-model.evaluate_model('./model_checkpoints/model_WNet_checkpoint_09_19_2022_071819.h5', test_dataset)
+model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_09_20_2022_200139.h5', test_dataset)
