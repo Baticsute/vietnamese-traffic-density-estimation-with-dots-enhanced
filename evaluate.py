@@ -16,7 +16,7 @@ session = InteractiveSession(config=config)
 
 
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1)
+dataset_dict = data_loader.load_dataset_paths(dataset_name='trancos_v3', validation_split_size=0.1)
 
 validation_input_data = dataset_dict['validation']['images']
 validation_output_data = dataset_dict['validation']['density_maps']
@@ -43,6 +43,6 @@ test_dataset, test_size = data_loader.load_dataset(
     downsampling_size=8
 )
 
-model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_09_20_2022_200139.h5', validation_dataset)
+model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_11_06_2022_180257.h5', validation_dataset)
 
-model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_09_20_2022_200139.h5', test_dataset)
+model.evaluate_model('./model_checkpoints/model_CSRNet_checkpoint_11_06_2022_180257.h5', test_dataset)

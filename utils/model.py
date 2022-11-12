@@ -93,6 +93,16 @@ def density_mse(y_true, y_pred, axis=(1, 2, 3)):
         tf.reduce_sum(y_true, axis=axis) - tf.reduce_sum(y_pred, axis=axis)
     )
 
+def count_mae(y_true, y_pred):
+    return tf.abs(
+        y_true - tf.reduce_sum(y_pred, axis=-1)
+    )
+
+def count_mse(y_true, y_pred):
+    return tf.square(
+        y_true - tf.reduce_sum(y_pred, axis=-1)
+    )
+
 
 def loss_euclidean_distance(y_true, y_pred):
     """ Computes the euclidean distance between two tensors.
@@ -318,21 +328,33 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
 
     # back-end
     x = Conv2D(512, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_1')(x)
+
     x = Conv2D(512, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_2')(x)
+
     x = Conv2D(512, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_3')(x)
+
     x = Conv2D(256, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_4')(x)
+
     x = Conv2D(128, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_5')(x)
+
     x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
-               kernel_initializer=dilated_conv_kernel_initializer)(x)
+               kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_6')(x)
 
     output_flow = Conv2D(1, 1, strides=(1, 1), padding='same', activation='relu',
-                         kernel_initializer=dilated_conv_kernel_initializer)(x)
-    model = Model(inputs=input_flow, outputs=output_flow)
+                         kernel_initializer=dilated_conv_kernel_initializer, name='density_map_output')(x)
+
+    flatten = Flatten(name='flatten')(output_flow)
+    dense128 = Dense(128, activation='linear')(flatten)
+    dense64 = Dense(64, activation='linear')(dense128)
+    dense32 = Dense(32, activation='linear')(dense64)
+    count_output_flow = Dense(1, activation='linear', name="count_output")(dense32)
+
+    model = Model(inputs=input_flow, outputs=[output_flow, count_output_flow])
 
     front_end = VGG16(weights='imagenet', include_top=False)
 
@@ -352,10 +374,20 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
     rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
     adam_optimizer = Adam(lr=1e-7)
 
+    losses = {
+        'density_map_output': 'binary_crossentropy',
+        'count_output': count_mae
+    }
+
+    metrics = {
+        'density_map_output': [density_mae, density_mse],
+        'count_output': [count_mae, count_mse]
+    }
+
     model.compile(
         optimizer=rms,
-        loss='binary_crossentropy',
-        metrics=[density_mae, density_mse]
+        loss=losses,
+        metrics=metrics
     )
 
     return model
@@ -525,9 +557,11 @@ def load_pretrained_model(model_filename):
 
     custom_objects = {
         "loss_euclidean_distance": loss_euclidean_distance,
-        "MSE_BCE": MSE_BCE,
-        "density_mse": density_mse,
         "density_mae": density_mae,
+        "density_mse": density_mse,
+        "count_mae": count_mae,
+        "count_mse": count_mse,
+        "MSE_BCE": MSE_BCE,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -544,15 +578,28 @@ def evaluate_model(model_filename, test_data):
         "loss_euclidean_distance": loss_euclidean_distance,
         "density_mae": density_mae,
         "density_mse": density_mse,
+        "count_mae": count_mae,
+        "count_mse": count_mse,
         "MSE_BCE": MSE_BCE,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
 
+
+    losses = {
+        'density_map_output': 'binary_crossentropy',
+        'count_output': count_mae
+    }
+
+    _metrics = {
+        'density_map_output': [density_mae, density_mse],
+        'count_output': [count_mae, count_mse]
+    }
+
     model.compile(
         optimizer='adam',
-        loss=loss_euclidean_distance,
-        metrics=[density_mae, density_mse, 'mae', 'mse']
+        loss=losses,
+        metrics=_metrics
     )
 
     print("Evaluating model on test data. Please wait...")
