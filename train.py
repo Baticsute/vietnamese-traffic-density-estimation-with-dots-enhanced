@@ -31,7 +31,7 @@ TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 BATCH_SIZE = 1
-BATCH_SAMPLE_SIZE = 128
+BATCH_SAMPLE_SIZE = 256
 DATASET_LOOP = 20
 
 dataset_dict = data_loader.load_dataset_paths(dataset_name='trancos_v3', validation_split_size=0.2)
@@ -79,6 +79,6 @@ model.train_model(
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
     model_checkpoint_filename='model_CSRNet_checkpoint',
-    patience=50,
+    patience=100,
     monitor='val_density_map_output_density_mae'
 )

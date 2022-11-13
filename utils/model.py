@@ -95,12 +95,12 @@ def density_mse(y_true, y_pred, axis=(1, 2, 3)):
 
 def count_mae(y_true, y_pred):
     return tf.abs(
-        y_true - tf.reduce_sum(y_pred, axis=-1)
+        tf.reduce_sum(y_true) - tf.reduce_sum(y_pred)
     )
 
 def count_mse(y_true, y_pred):
     return tf.square(
-        y_true - tf.reduce_sum(y_pred, axis=-1)
+        tf.reduce_sum(y_true) - tf.reduce_sum(y_pred)
     )
 
 
@@ -146,7 +146,7 @@ def EUCLID_BCE(y_true, y_pred, alpha=100, beta=10):
     return alpha * euclid + beta * bce
 
 
-def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True):
+def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True, is_multi_output=False):
     # Difference with original paper: padding 'valid vs same'
     conv_kernel_initializer = RandomNormal(stddev=0.01)
     adam_optimizer = Adam(lr=1e-4, decay=5e-3)
@@ -299,7 +299,7 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True):
     return model
 
 
-def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
+def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
 
     input_flow = Input((img_h, img_w, img_ch), name='model_image_input')
     dilated_conv_kernel_initializer = RandomNormal(stddev=0.01)
@@ -349,12 +349,15 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
                          kernel_initializer=dilated_conv_kernel_initializer, name='density_map_output')(x)
 
     flatten = Flatten(name='flatten')(output_flow)
-    dense128 = Dense(128, activation='linear')(flatten)
-    dense64 = Dense(64, activation='linear')(dense128)
-    dense32 = Dense(32, activation='linear')(dense64)
+    dense128 = Dense(128, activation='relu')(flatten)
+    dense64 = Dense(64, activation='relu')(dense128)
+    dense32 = Dense(32, activation='relu')(dense64)
     count_output_flow = Dense(1, activation='linear', name="count_output")(dense32)
 
-    model = Model(inputs=input_flow, outputs=[output_flow, count_output_flow])
+    if is_multi_output:
+        model = Model(inputs=input_flow, outputs=[output_flow, count_output_flow])
+    else:
+        model = Model(inputs=input_flow, outputs=output_flow)
 
     front_end = VGG16(weights='imagenet', include_top=False)
 
@@ -374,21 +377,33 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1):
     rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
     adam_optimizer = Adam(lr=1e-7)
 
-    losses = {
-        'density_map_output': 'binary_crossentropy',
-        'count_output': count_mae
-    }
+    losses = None
+    lossWeights = None
+    metrics = None
+    if is_multi_output:
+        losses = {
+            'density_map_output': 'binary_crossentropy',
+            'count_output': count_mae
+        }
+        lossWeights = {"density_map_output": 0.7, "count_output": 0.3}
 
-    metrics = {
-        'density_map_output': [density_mae, density_mse],
-        'count_output': [count_mae, count_mse]
-    }
+        metrics = {
+            'density_map_output': [density_mae, density_mse],
+            'count_output': [count_mae, count_mse]
+        }
 
-    model.compile(
-        optimizer=rms,
-        loss=losses,
-        metrics=metrics
-    )
+        model.compile(
+            optimizer=rms,
+            loss=losses,
+            loss_weights=lossWeights,
+            metrics=metrics
+        )
+    else:
+        model.compile(
+            optimizer=rms,
+            loss='binary_crossentropy',
+            metrics=[density_mae, density_mse]
+        )
 
     return model
 
