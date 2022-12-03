@@ -10,6 +10,8 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import pathlib
 
+import math
+
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
@@ -31,10 +33,12 @@ TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 BATCH_SIZE = 1
-BATCH_SAMPLE_SIZE = 256
-DATASET_LOOP = 20
+BATCH_SAMPLE_SIZE = 64
+DATASET_LOOP = 10
+DOWN_SAMPLING = 8
+is_multi_outputs = False
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='trancos_v3', validation_split_size=0.2)
+dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1)
 
 train_input_data = dataset_dict['train']['images']
 train_output_data = dataset_dict['train']['density_maps']
@@ -48,8 +52,9 @@ train_dataset, train_size = data_loader.load_dataset(
     output_type='density_maps',
     batch_size=BATCH_SIZE,
     shuffle=True,
-    downsampling_size=8,
-    buffer_size=512
+    downsampling_size=DOWN_SAMPLING,
+    buffer_size=512,
+    is_multi_outputs=is_multi_outputs
 )
 
 validation_dataset, val_size = data_loader.load_dataset(
@@ -58,15 +63,11 @@ validation_dataset, val_size = data_loader.load_dataset(
     output_type='density_maps',
     batch_size=BATCH_SIZE,
     shuffle=False,
-    downsampling_size=8
+    downsampling_size=DOWN_SAMPLING,
+    is_multi_outputs=is_multi_outputs
 )
 
-# for image, mask in train_dataset:
-#     print(image.shape)
-#     print(mask.shape)
-#     print(tf.reduce_sum(mask))
-
-
+# net = model.get_csrnet_model(img_h=480, img_w=640, img_ch=3, is_multi_output=is_multi_outputs)
 net = model.get_csrnet_model(img_h=480, img_w=640, img_ch=3)
 
 # net.summary()
@@ -75,10 +76,10 @@ model.train_model(
     model=net,
     train_data=train_dataset,
     valid_data=validation_dataset,
-    steps_per_epoch=int(train_size / BATCH_SAMPLE_SIZE),
+    steps_per_epoch=int(math.ceil((1. * train_size) / BATCH_SAMPLE_SIZE)),
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
     model_checkpoint_filename='model_CSRNet_checkpoint',
     patience=100,
-    monitor='val_density_map_output_density_mae'
+    monitor='val_loss'
 )

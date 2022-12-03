@@ -12,6 +12,9 @@ from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import SGD, Adam, RMSprop
 
+from tensorflow.keras.metrics import MeanAbsoluteError as mae_metric, MeanSquaredError as mse_metric
+from tensorflow.keras.losses import MeanAbsoluteError as mae_error, MeanSquaredError as mse_error
+
 from datetime import datetime
 
 import tensorflow as tf
@@ -145,6 +148,15 @@ def EUCLID_BCE(y_true, y_pred, alpha=100, beta=10):
     bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
     return alpha * euclid + beta * bce
 
+def focal_loss(targets, inputs, alpha=0.8, gamma=2):
+    inputs = K.flatten(inputs)
+    targets = K.flatten(targets)
+
+    bce = K.binary_crossentropy(targets, inputs)
+    bce_exp = K.exp(-bce)
+    loss = K.mean(alpha * K.pow((1 - bce_exp), gamma) * bce)
+
+    return loss
 
 def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True, is_multi_output=False):
     # Difference with original paper: padding 'valid vs same'
@@ -291,7 +303,7 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True, is_multi_output=False
             counter_conv += 1
 
     model.compile(
-        optimizer=rms,
+        optimizer=adam_optimizer,
         loss='binary_crossentropy',
         metrics=[density_mae, density_mse]
     )
@@ -345,19 +357,22 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
     x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
                kernel_initializer=dilated_conv_kernel_initializer, name='2dilation_conv2D_6')(x)
 
-    output_flow = Conv2D(1, 1, strides=(1, 1), padding='same', activation='relu',
-                         kernel_initializer=dilated_conv_kernel_initializer, name='density_map_output')(x)
+    density_map = Conv2D(1, 1, strides=(1, 1), padding='same', activation='relu',
+                         kernel_initializer=dilated_conv_kernel_initializer, name='density_map')(x)
 
-    flatten = Flatten(name='flatten')(output_flow)
+    # count_branch = Conv2D(1, 1, strides=(1, 1), padding='same', activation='relu',
+    #                      kernel_initializer=dilated_conv_kernel_initializer, name='count_branch')(x)
+
+    flatten = Flatten(name='flatten')(density_map)
     dense128 = Dense(128, activation='relu')(flatten)
     dense64 = Dense(64, activation='relu')(dense128)
     dense32 = Dense(32, activation='relu')(dense64)
-    count_output_flow = Dense(1, activation='linear', name="count_output")(dense32)
+    count_output_flow = Dense(1, activation='linear', name="estimation")(dense32)
 
     if is_multi_output:
-        model = Model(inputs=input_flow, outputs=[output_flow, count_output_flow])
+        model = Model(inputs=input_flow, outputs={"density_map": density_map, "estimation": count_output_flow})
     else:
-        model = Model(inputs=input_flow, outputs=output_flow)
+        model = Model(inputs=input_flow, outputs=density_map)
 
     front_end = VGG16(weights='imagenet', include_top=False)
 
@@ -373,34 +388,34 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
             model.layers[i].set_weights(weights_front_end[counter_conv])
             counter_conv += 1
 
-    sgd_optimizer = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
+    sgd = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
     rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
-    adam_optimizer = Adam(lr=1e-7)
+    adam_optimizer = Adam(lr=1e-6)
 
     losses = None
     lossWeights = None
     metrics = None
     if is_multi_output:
         losses = {
-            'density_map_output': 'binary_crossentropy',
-            'count_output': count_mae
+            'density_map': 'binary_crossentropy',
+            'estimation': mae_error()
         }
-        lossWeights = {"density_map_output": 0.7, "count_output": 0.3}
+        lossWeights = {"density_map": 0.7, "estimation": 0.3}
 
         metrics = {
-            'density_map_output': [density_mae, density_mse],
-            'count_output': [count_mae, count_mse]
+            'density_map': [density_mae, density_mse],
+            'estimation': [mae_metric(), mse_metric()]
         }
 
         model.compile(
-            optimizer=rms,
+            optimizer=sgd,
             loss=losses,
             loss_weights=lossWeights,
             metrics=metrics
         )
     else:
         model.compile(
-            optimizer=rms,
+            optimizer=adam_optimizer,
             loss='binary_crossentropy',
             metrics=[density_mae, density_mse]
         )
@@ -411,84 +426,94 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
     s = inputs
-    adam_optimizer = Adam()
+    adam_optimizer = Adam(lr=1e-6)
     # sgd_optimizer = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
 
     init = RandomNormal(stddev=0.01)
 
-    c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer=init, padding='same')(s)
+    c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(s)
     c1 = BatchNormalization()(c1)
-    c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c1)
+    c1 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c1)
     c1 = BatchNormalization()(c1)
     c1 = SpatialDropout2D(0.4)(c1)
     p1 = MaxPooling2D((2, 2))(c1)
 
-    c2 = Conv2D(64, (3, 3), activation='relu', kernel_initializer=init, padding='same')(p1)
+    c2 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p1)
     c2 = BatchNormalization()(c2)
-    c2 = Conv2D(64, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c2)
+    c2 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c2)
     c2 = BatchNormalization()(c2)
     c2 = SpatialDropout2D(0.4)(c2)
     p2 = MaxPooling2D((2, 2))(c2)
 
-    c3 = Conv2D(128, (3, 3), activation='relu', kernel_initializer=init, padding='same')(p2)
+    c3 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p2)
     c3 = BatchNormalization()(c3)
-    c3 = Conv2D(128, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c3)
+    c3 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c3)
     c3 = BatchNormalization()(c3)
     c3 = SpatialDropout2D(0.4)(c3)
     p3 = MaxPooling2D((2, 2))(c3)
 
-    c4 = Conv2D(256, (3, 3), activation='relu', kernel_initializer=init, padding='same')(p3)
+    c4 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p3)
     c4 = BatchNormalization()(c4)
-    c4 = Conv2D(256, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c4)
+    c4 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c4)
     c4 = BatchNormalization()(c4)
     c4 = SpatialDropout2D(0.4)(c4)
     p4 = MaxPooling2D(pool_size=(2, 2))(c4)
 
-    c5 = Conv2D(512, (3, 3), activation='relu', kernel_initializer=init, padding='same')(p4)
+    c5 = Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(p4)
     c5 = BatchNormalization()(c5)
-    c5 = Conv2D(512, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c5)
+    c5 = Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c5)
     c5 = BatchNormalization()(c5)
     c5 = SpatialDropout2D(0.4)(c5)
 
     u6 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(c5)
     u6 = concatenate([u6, c4])
-    c6 = Conv2D(256, (3, 3), activation='relu', kernel_initializer=init, padding='same')(u6)
+    c6 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u6)
     c6 = BatchNormalization()(c6)
-    c6 = Conv2D(256, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c6)
+    c6 = Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c6)
     c6 = BatchNormalization()(c6)
     c6 = SpatialDropout2D(0.4)(c6)
 
     u7 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(c6)
     u7 = concatenate([u7, c3])
-    c7 = Conv2D(128, (3, 3), activation='relu', kernel_initializer=init, padding='same')(u7)
+    c7 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u7)
     c7 = BatchNormalization()(c7)
-    c7 = Conv2D(128, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c7)
+    c7 = Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c7)
     c7 = BatchNormalization()(c7)
     c7 = SpatialDropout2D(0.4)(c7)
 
     u8 = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(c7)
     u8 = concatenate([u8, c2])
-    c8 = Conv2D(64, (3, 3), activation='relu', kernel_initializer=init, padding='same')(u8)
+    c8 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u8)
     c8 = BatchNormalization()(c8)
-    c8 = Conv2D(64, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c8)
+    c8 = Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c8)
     c8 = BatchNormalization()(c8)
     c8 = SpatialDropout2D(0.4)(c8)
 
     u9 = Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same')(c8)
     u9 = concatenate([u9, c1], axis=3)
-    c9 = Conv2D(32, (3, 3), activation='relu', kernel_initializer=init, padding='same')(u9)
+    c9 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(u9)
     c9 = BatchNormalization()(c9)
-    c9 = Conv2D(32, (3, 3), activation='relu', kernel_initializer=init, padding='same')(c9)
-    c9 = BatchNormalization()(c9)
+    c9 = Conv2D(32, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same')(c9)
+    # c9 = BatchNormalization()(c9)
     # c9 = SpatialDropout2D(0.4)(c9)
 
-    masks = Conv2D(1, (1, 1), activation='relu', name='mask_output')(c9)
+    # back-end
+    x = Conv2D(256, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
+               kernel_initializer=init, name='2dilation_conv2D_1')(c9)
+
+    x = Conv2D(128, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
+               kernel_initializer=init, name='2dilation_conv2D_2')(x)
+
+    x = Conv2D(64, (3, 3), strides=(1, 1), padding='same', dilation_rate=2, activation='relu',
+               kernel_initializer=init, name='2dilation_conv2D_3')(x)
+
+    masks = Conv2D(1, 1, strides=(1, 1), activation='relu', padding='same', name='mask_output')(x)
 
     model = Model(inputs=[inputs], outputs=[masks], name="UNet_V1_Vehicle_Counting")
 
     model.compile(
         optimizer=adam_optimizer,
-        loss='binary_crossentropy',
+        loss=focal_loss,
         metrics=[density_mae, density_mse]
     )
 
