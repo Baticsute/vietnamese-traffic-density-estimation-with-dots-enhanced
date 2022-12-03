@@ -120,8 +120,7 @@ def mapping_rescale_dot(mask_scale, mask_original):
     non_zero_points[1] = non_zero_points[1] * scale_factor_w
     non_zero_points = np.transpose(non_zero_points)
     for point in non_zero_points:
-        x, y = point[0], point[1]
-        mask_scale[x][y] = 1.0
+        mask_scale[point[0]][point[1]] = 1.0
 
     return mask_scale, non_zero_points
 
