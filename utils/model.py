@@ -304,7 +304,7 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True, is_multi_output=False
 
     model.compile(
         optimizer=adam_optimizer,
-        loss='binary_crossentropy',
+        loss=MSE_BCE,
         metrics=[density_mae, density_mse]
     )
 

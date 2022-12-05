@@ -243,10 +243,9 @@ def load_image(path):
     minimum_height = 480
     if image.shape[0] == minimum_height and image.shape[1] == minimum_width:
         return image
-    image = tf.image.resize_with_pad(
+    image = tf.image.resize(
         image,
-        target_height=minimum_height,
-        target_width=minimum_width,
+        size=[minimum_height, minimum_width],
         method=tf.image.ResizeMethod.BILINEAR,
         antialias=False
     )
@@ -270,10 +269,9 @@ def load_mask(path):
     image = tf.image.convert_image_dtype(image, TARGET_TYPE)
     minimum_width = 640
     minimum_height = 480
-    image = tf.image.resize_with_pad(
+    image = tf.image.resize(
         image,
-        target_height=minimum_height,
-        target_width=minimum_width,
+        size=[minimum_height, minimum_width],
         method=tf.image.ResizeMethod.BILINEAR,
         antialias=False
     )

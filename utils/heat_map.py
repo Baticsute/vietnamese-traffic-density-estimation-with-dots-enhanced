@@ -43,7 +43,8 @@ class HeatMap:
             show_original=False,
             show_colorbar=False,
             width_pad=0,
-            figure_size=(10, 20)
+            figure_size=(10, 20),
+            text=None
     ):
 
         # If show_original is True, then subplot first figure as orginal image
@@ -65,6 +66,14 @@ class HeatMap:
             plt.axis('off')
         plt.imshow(self.image, cmap='gray')
         plt.imshow(self.heat_map / 255, alpha=transparency, cmap=color_map)
+        if text is not None:
+            box_styles = dict(
+                facecolor='green',
+                alpha=0.5,
+                boxstyle="round",
+                edgecolor='white'
+            )
+            plt.text(20, 20, text, color='white', fontsize='xx-large', fontweight='bold', bbox=box_styles)
         if show_colorbar:
             plt.colorbar()
         plt.tight_layout(w_pad=width_pad)

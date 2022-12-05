@@ -35,7 +35,7 @@ VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 BATCH_SIZE = 1
 BATCH_SAMPLE_SIZE = 64
 DATASET_LOOP = 10
-DOWN_SAMPLING = 8
+DOWN_SAMPLING = 2
 is_multi_outputs = False
 
 dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1)
@@ -68,7 +68,7 @@ validation_dataset, val_size = data_loader.load_dataset(
 )
 
 # net = model.get_csrnet_model(img_h=480, img_w=640, img_ch=3, is_multi_output=is_multi_outputs)
-net = model.get_csrnet_model(img_h=480, img_w=640, img_ch=3)
+net = model.get_wnet_model(img_h=480, img_w=640, img_ch=3, BN=False)
 
 # net.summary()
 
@@ -79,7 +79,7 @@ model.train_model(
     steps_per_epoch=int(math.ceil((1. * train_size) / BATCH_SAMPLE_SIZE)),
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
-    model_checkpoint_filename='model_CSRNet_checkpoint',
+    model_checkpoint_filename='model_WNet_NoBN_checkpoint',
     patience=100,
     monitor='val_loss'
 )
