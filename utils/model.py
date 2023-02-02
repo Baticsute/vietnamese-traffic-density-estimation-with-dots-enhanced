@@ -1,9 +1,14 @@
+import math
+import gc
+
+from tensorflow.keras.callbacks import Callback
 from tensorflow.keras.models import Model
 from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, UpSampling2D, BatchNormalization, SpatialDropout2D, \
     Dense, Dropout, \
-    Flatten, Activation, multiply, concatenate, MaxPooling2D, Average, Lambda
+    Flatten, Activation, Multiply, concatenate, MaxPooling2D, Average, Lambda, GlobalAveragePooling2D, Add, Subtract, multiply, add, ReLU
 
+from utils.pooling import MaxUnpooling2D, MaxPoolingWithArgmax2D
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from tensorflow.keras import regularizers
 from skimage.transform import resize
@@ -21,7 +26,12 @@ import tensorflow as tf
 import numpy as np
 
 from tensorflow.keras import backend as K
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
 
+config = ConfigProto()
+config.gpu_options.allow_growth = True
+session = InteractiveSession(config=config)
 tf.keras.backend.set_image_data_format('channels_last')  # TF dimension ordering in this code
 
 VALIDATION_SIZE_SPLIT = 0.2
@@ -138,10 +148,12 @@ def MAE_BCE(y_true, y_pred, alpha=1, beta=1):
     bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
     return alpha * mae + beta * bce
 
-def MSE_BCE(y_true, y_pred, alpha=1000, beta=10):
-    mse = K.mean(K.square(y_true - y_pred), axis=-1)
-    bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
-    return alpha * mse + beta * bce
+def MSE_BCE(alpha=1000, beta=10):
+    def mse_bce(y_true, y_pred):
+        mse = K.mean(K.square(y_true - y_pred), axis=-1)
+        bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
+        return alpha * mse + beta * bce
+    return mse_bce
 
 def EUCLID_BCE(y_true, y_pred, alpha=100, beta=10):
     euclid = K.mean(K.sqrt(K.sum(K.square(y_pred - y_true), axis=-1)))
@@ -158,7 +170,7 @@ def focal_loss(targets, inputs, alpha=0.8, gamma=2):
 
     return loss
 
-def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=True, is_multi_output=False):
+def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False, is_multi_output=False):
     # Difference with original paper: padding 'valid vs same'
     conv_kernel_initializer = RandomNormal(stddev=0.01)
     adam_optimizer = Adam(lr=1e-4, decay=5e-3)
@@ -364,9 +376,9 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
     #                      kernel_initializer=dilated_conv_kernel_initializer, name='count_branch')(x)
 
     flatten = Flatten(name='flatten')(density_map)
-    dense128 = Dense(128, activation='relu')(flatten)
-    dense64 = Dense(64, activation='relu')(dense128)
-    dense32 = Dense(32, activation='relu')(dense64)
+    dense128 = Dense(128, activation=None)(flatten)
+    dense64 = Dense(64, activation=None)(dense128)
+    dense32 = Dense(32, activation=None)(dense64)
     count_output_flow = Dense(1, activation='linear', name="estimation")(dense32)
 
     if is_multi_output:
@@ -416,12 +428,183 @@ def get_csrnet_model(img_h=480, img_w=640, img_ch=1, is_multi_output=False):
     else:
         model.compile(
             optimizer=adam_optimizer,
-            loss='binary_crossentropy',
+            loss=MSE_BCE,
             metrics=[density_mae, density_mse]
         )
 
     return model
 
+def w_by_sigmoid_normalization(x):
+    return tf.math.atan(K.sigmoid(x)) * (2.0 / math.pi)
+
+def get_u_asd_net(img_h=480, img_w=640, img_ch=1, is_multi_output=False, BN=True, is_use_max_unpool=True):
+
+    input_flow = Input((img_h, img_w, img_ch), name='model_image_input')
+    conv_kernel_initializer = RandomNormal(stddev=0.01)
+
+    # front-end (backbone) aka encoder
+    dtype = tf.float32
+    x = Lambda(
+        lambda batch: (batch - tf.constant([0.485, 0.456, 0.406], dtype=dtype)) / tf.constant([0.229, 0.224, 0.225],
+                                                                                              dtype=dtype))(input_flow)
+
+    c1 = Conv2D(64, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(x)
+    c1 = ReLU()(c1)
+    c1 = BatchNormalization()(c1) if BN else c1
+    c1 = Conv2D(64, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c1)
+    c1 = ReLU()(c1)
+    c1 = BatchNormalization()(c1) if BN else c1
+    p1 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(c1)
+
+    c2 = Conv2D(128, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(p1)
+    c2 = ReLU()(c2)
+    c2 = BatchNormalization()(c2) if BN else c2
+    fm1_idx1 = Conv2D(128, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c2)
+    fm1_idx1 = ReLU()(fm1_idx1)
+    fm1_idx1 = BatchNormalization()(fm1_idx1) if BN else fm1_idx1
+    p2 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(fm1_idx1)
+
+    c3 = Conv2D(256, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(p2)
+    c3 = ReLU()(c3)
+    c3 = BatchNormalization()(c3) if BN else c3
+    c3 = Conv2D(256, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c3)
+    c3 = ReLU()(c3)
+    c3 = BatchNormalization()(c3) if BN else c3
+    fm2_idx2 = Conv2D(256, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c3)
+    fm2_idx2 = ReLU()(fm2_idx2)
+    fm2_idx2 = BatchNormalization()(fm2_idx2) if BN else fm2_idx2
+    p3 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(fm2_idx2)
+
+    c4 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(p3)
+    c4 = ReLU()(c4)
+    c4 = BatchNormalization()(c4) if BN else c4
+    c4 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c4)
+    c4 = ReLU()(c4)
+    c4 = BatchNormalization()(c4) if BN else c4
+    fm3_idx3 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c4)
+    fm3_idx3 = ReLU()(fm3_idx3)
+    fm3_idx3 = BatchNormalization()(fm3_idx3) if BN else fm3_idx3
+    p4 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(fm3_idx3)
+
+    c5 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(p4)
+    c5 = ReLU()(c5)
+    c5 = BatchNormalization()(c5) if BN else c5
+    c5 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c5)
+    c5 = ReLU()(c5)
+    c5 = BatchNormalization()(c5) if BN else c5
+    fm4_idx4 = Conv2D(512, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c5)
+    fm4_idx4 = ReLU()(fm4_idx4)
+    fm4_idx4 = BatchNormalization()(fm4_idx4) if BN else fm4_idx4
+    if is_use_max_unpool:
+        fm4_idx4_pm, fm4_idx4_pm_argmax = MaxPoolingWithArgmax2D(pool_size=(2, 2), strides=(2, 2))(fm4_idx4)
+        upc5 = MaxUnpooling2D(up_size=(4, 4))([fm4_idx4_pm, fm4_idx4_pm_argmax])
+    else:
+        upc5 = UpSampling2D(size=(2, 2))(fm4_idx4)
+
+    c6 = concatenate([fm3_idx3, upc5])
+    c6 = Conv2D(256, (1, 1), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c6)
+    c6 = ReLU()(c6)
+    c6 = BatchNormalization()(c6) if BN else c6
+    c6 = Conv2D(256, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c6)
+    c6 = ReLU()(c6)
+    c6 = BatchNormalization()(c6) if BN else c6
+    if is_use_max_unpool:
+        c6_mp, c6_mp_argmax = MaxPoolingWithArgmax2D(pool_size=(2, 2), strides=(2, 2))(c6)
+        upc6 = MaxUnpooling2D(up_size=(4, 4))([c6_mp, c6_mp_argmax])
+    else:
+        upc6 = UpSampling2D(size=(2, 2))(c6)
+
+    c7 = concatenate([fm2_idx2, upc6])
+    c7 = Conv2D(128, (1, 1), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c7)
+    c7 = ReLU()(c7)
+    c7 = BatchNormalization()(c7) if BN else c7
+    c7 = Conv2D(128, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c7)
+    c7 = ReLU()(c7)
+    c7 = BatchNormalization()(c7) if BN else c7
+    if is_use_max_unpool:
+        c7_mp, c7_mp_argmax = MaxPoolingWithArgmax2D(pool_size=(2, 2), strides=(2, 2))(c7)
+        upc7 = MaxUnpooling2D(up_size=(4, 4))([c7_mp, c7_mp_argmax])
+    else:
+        upc7 = UpSampling2D(size=(2, 2))(c7)
+
+    c8 = concatenate([fm1_idx1, upc7])
+    c8 = Conv2D(64, (1, 1), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c8)
+    c8 = ReLU()(c8)
+    c8 = BatchNormalization()(c8) if BN else c8
+    c8 = Conv2D(64, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c8)
+    c8 = ReLU()(c8)
+    c8 = BatchNormalization()(c8) if BN else c8
+    c8 = Conv2D(32, (3, 3), strides=(1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(c8)
+    c8 = ReLU()(c8)
+
+    #ASD Module
+    asd_b1 = Conv2DTranspose(512, (1, 1), strides=(2, 2), padding='same')(fm4_idx4)
+    # asd_b1 = Conv2D(512, (1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b1)
+    asd_b1 = Conv2D(256, (1, 1), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b1)
+    asd_b1 = ReLU()(asd_b1)
+    asd_b1 = Conv2D(128, (7, 7), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b1)
+    asd_b1 = ReLU()(asd_b1)
+    asd_b1 = Conv2D(64, (7, 7), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b1)
+    asd_b1 = ReLU()(asd_b1)
+    asd_b1 = Conv2D(1, (3, 3), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b1)
+    asd_b1 = ReLU()(asd_b1)
+    asd_b1 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(asd_b1)
+
+    # asd_b2 = Conv2D(256, (3, 3), padding='same',  kernel_initializer=conv_kernel_initializer)(fm4_idx4)
+    # asd_b2 = ReLU()(asd_b2)
+    asd_b2 = Conv2D(128, (3, 3), padding='same',  kernel_initializer=conv_kernel_initializer)(fm4_idx4)
+    asd_b2 = ReLU()(asd_b2)
+    asd_b2 = Conv2D(64, (3, 3), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b2)
+    asd_b2 = ReLU()(asd_b2)
+    asd_b2 = Conv2D(1, (3, 3), padding='same',  kernel_initializer=conv_kernel_initializer)(asd_b2)
+    asd_b2 = ReLU()(asd_b2)
+
+    asd_b3 = GlobalAveragePooling2D()(fm4_idx4)
+    asd_b3 = Flatten()(asd_b3)
+    asd_b3 = Dense(32, activation=None)(asd_b3)
+    w = Dense(1)(asd_b3)
+    # w = Activation(w_by_sigmoid_normalization)(w)
+    w = Activation('sigmoid')(w)
+    w = Lambda(lambda _w: tf.math.atan(_w) * (2.0 / math.pi))(w)
+
+    one_subtract_w = Lambda(lambda _w: 1.0 - _w)(w)
+    asd_b1_w = multiply([one_subtract_w, asd_b1])
+    asd_b2_w = multiply([w, asd_b2])
+    asd_b1_b2 = add([asd_b1_w, asd_b2_w])
+    asd_final = UpSampling2D((8, 8), interpolation='nearest')(asd_b1_b2)
+
+    density_map = multiply([c8, asd_final])
+    density_map = Conv2D(1, (1, 1), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(density_map)
+    density_map = ReLU()(density_map)
+
+    model = Model(inputs=input_flow, outputs=density_map)
+
+    front_end = VGG16(weights='imagenet', include_top=False)
+
+    weights_front_end = []
+    for layer in front_end.layers:
+        if 'conv' in layer.name:
+            weights_front_end.append(layer.get_weights())
+    counter_conv = 0
+    for i in range(len(front_end.layers)):
+        if counter_conv >= 13:
+            break
+        if 'conv' in model.layers[i].name:
+            model.layers[i].set_weights(weights_front_end[counter_conv])
+            counter_conv += 1
+
+    sgd = SGD(lr=1e-7, decay=(5 * 1e-4), momentum=0.95)
+    rms = RMSprop(lr=1e-4, momentum=0.7, decay=0.0001)
+    adam_optimizer = Adam(lr=1e-6)
+
+    model.compile(
+        optimizer=adam_optimizer,
+        loss=MSE_BCE(alpha=1000, beta=20),
+        metrics=[density_mae, density_mse],
+        run_eagerly=True
+    )
+
+    return model
 
 def get_unet_model(img_h=96, img_w=128, img_ch=1):
     inputs = Input((img_h, img_w, img_ch), name='model_image_input')
@@ -541,6 +724,10 @@ def get_model_checkpoint(verbose=True, model_checkpoint_filename='model_unet_che
 def get_model_logging(model_log_dir='./logs'):
     return TensorBoard(log_dir=model_log_dir, write_graph=False)
 
+class ClearMemory(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        gc.collect()
+        K.clear_session()
 
 def train_model(model, train_data, valid_data=None,
                 n_epochs=100, steps_per_epoch=None, validation_steps=None,
@@ -563,6 +750,11 @@ def train_model(model, train_data, valid_data=None,
         use_multiprocessing=True,
         workers=16
     )
+
+    now = datetime.now()
+    string_date_time = now.strftime('%m_%d_%Y_%H%M%S')
+    model_save_file_name = './model_checkpoints/' + model_checkpoint_filename + f'_{string_date_time}_last_epoch' + '.h5'
+    model.save(model_save_file_name)
 
 def train_generator_model(
         model,
@@ -602,6 +794,10 @@ def load_pretrained_model(model_filename):
         "count_mae": count_mae,
         "count_mse": count_mse,
         "MSE_BCE": MSE_BCE,
+        "mse_bce": MSE_BCE,
+        "w_by_sigmoid_normalization": w_by_sigmoid_normalization,
+        "MaxPoolingWithArgmax2D": MaxPoolingWithArgmax2D,
+        "MaxUnpooling2D": MaxUnpooling2D,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
@@ -621,6 +817,9 @@ def evaluate_model(model_filename, test_data):
         "count_mae": count_mae,
         "count_mse": count_mse,
         "MSE_BCE": MSE_BCE,
+        "w_by_sigmoid_normalization": w_by_sigmoid_normalization,
+        "MaxPoolingWithArgmax2D": MaxPoolingWithArgmax2D,
+        "MaxUnpooling2D": MaxUnpooling2D,
     }
 
     model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)

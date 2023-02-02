@@ -62,9 +62,5 @@ def GAME_recursive(density, gt, currentLevel, targetLevel):
         return np.round(game, 3)
 
 
-def GAME_metric(preds, gts, l):
-    res = []
-    for i in range(len(gts)):
-        res.append(GAME_recursive(preds[i], gts[i], 0, l))
-
-    return np.mean(res)
+def GAME_metric(ground_truth, prediction, l):
+    return GAME_recursive(prediction, ground_truth, 0, l)

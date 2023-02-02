@@ -15,6 +15,8 @@ import gc
 from PIL import Image
 
 import tensorflow as tf
+from tensorflow.keras import layers
+
 
 ROOT_PATH = str(pathlib.Path().absolute())
 DATA_STORAGE_PATH = '/data_storage/'
@@ -278,7 +280,7 @@ def load_mask(path):
 
     return image
 
-def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2):
+def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, is_exist_validation=False, density_map_folder_name='density_maps'):
     train_image_paths = []
     validation_image_paths = []
     test_image_paths = []
@@ -297,28 +299,41 @@ def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2):
     sys.stdout.flush()
     train_image_path_string = path + '/train/images/'
     test_image_path_string = path + '/test/images/'
+    validation_image_path_string = None
+    is_split_from_train = False
+    if is_exist_validation:
+        is_split_from_train = False
+        validation_image_path_string = path + '/validation/images/'
 
     train_image_file_ids = next(os.walk(train_image_path_string))[2]
     validation_image_file_ids = []
     if validation_split_size > 0:
+        is_split_from_train = True
         train_image_file_ids, validation_image_file_ids = train_test_split(train_image_file_ids,
                                                                            test_size=validation_split_size,
                                                                            random_state=1996)
+    if is_exist_validation and validation_image_path_string is not None:
+        validation_image_file_ids = next(os.walk(validation_image_path_string))[2]
+
     test_image_file_ids = next(os.walk(test_image_path_string))[2]
 
     for id in train_image_file_ids:
         file_path = os.path.join(path + '/train/images/', id)
         label_file_path = os.path.join(path + '/train/masks/', os.path.splitext(id)[0] + '.png')
-        dm_file_path = os.path.join(path + '/train/density_maps/', os.path.splitext(id)[0] + '.npy')
+        dm_file_path = os.path.join(path + '/train/' + density_map_folder_name + '/', os.path.splitext(id)[0] + '.npy')
 
         train_image_paths.append(str(file_path))
         train_label_paths.append(str(label_file_path))
         train_dm_paths.append(str(dm_file_path))
 
     for id in validation_image_file_ids:
-        file_path = os.path.join(path + '/train/images/', id)
-        label_file_path = os.path.join(path + '/train/masks/', os.path.splitext(id)[0] + '.png')
-        dm_file_path = os.path.join(path + '/train/density_maps/', os.path.splitext(id)[0] + '.npy')
+        sub_path = '/train/'
+        if not is_split_from_train:
+            sub_path = '/validation/'
+
+        file_path = os.path.join(path + sub_path + 'images/', id)
+        label_file_path = os.path.join(path + sub_path + 'masks/', os.path.splitext(id)[0] + '.png')
+        dm_file_path = os.path.join(path + sub_path + density_map_folder_name + '/', os.path.splitext(id)[0] + '.npy')
 
         validation_image_paths.append(str(file_path))
         validation_label_paths.append(str(label_file_path))
@@ -327,7 +342,7 @@ def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2):
     for id in test_image_file_ids:
         file_path = os.path.join(path + '/test/images/', id)
         label_file_path = os.path.join(path + '/test/masks/', os.path.splitext(id)[0] + '.png')
-        dm_file_path = os.path.join(path + '/test/density_maps/', os.path.splitext(id)[0] + '.npy')
+        dm_file_path = os.path.join(path + '/test/' + density_map_folder_name + '/', os.path.splitext(id)[0] + '.npy')
 
         test_image_paths.append(str(file_path))
         test_label_paths.append(str(label_file_path))
