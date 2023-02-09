@@ -148,6 +148,12 @@ def MAE_BCE(y_true, y_pred, alpha=1, beta=1):
     bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
     return alpha * mae + beta * bce
 
+
+def MSE_BCE_2(y_true, y_pred, alpha=1000, beta=10):
+    mse = K.mean(K.square(y_true - y_pred), axis=-1)
+    bce = K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
+    return alpha * mse + beta * bce
+
 def MSE_BCE(alpha=1000, beta=10):
     def mse_bce(y_true, y_pred):
         mse = K.mean(K.square(y_true - y_pred), axis=-1)
@@ -316,8 +322,9 @@ def get_wnet_model(img_h=96, img_w=128, img_ch=1, BN=False, is_multi_output=Fals
 
     model.compile(
         optimizer=adam_optimizer,
-        loss=MSE_BCE,
-        metrics=[density_mae, density_mse]
+        loss=MSE_BCE_2,
+        metrics=[density_mae, density_mse],
+        run_eagerly=True
     )
 
     return model
@@ -572,6 +579,8 @@ def get_u_asd_net(img_h=480, img_w=640, img_ch=1, is_multi_output=False, BN=True
     asd_b2_w = multiply([w, asd_b2])
     asd_b1_b2 = add([asd_b1_w, asd_b2_w])
     asd_final = UpSampling2D((8, 8), interpolation='nearest')(asd_b1_b2)
+    asd_final = Conv2D(1, (1, 1), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(asd_final)
+    asd_final = Activation('sigmoid')(asd_final)
 
     density_map = multiply([c8, asd_final])
     density_map = Conv2D(1, (1, 1), strides=(1, 1), padding='same', kernel_initializer=conv_kernel_initializer)(density_map)
@@ -599,7 +608,7 @@ def get_u_asd_net(img_h=480, img_w=640, img_ch=1, is_multi_output=False, BN=True
 
     model.compile(
         optimizer=adam_optimizer,
-        loss=MSE_BCE(alpha=1000, beta=20),
+        loss=MSE_BCE_2,
         metrics=[density_mae, density_mse],
         run_eagerly=True
     )
@@ -795,6 +804,7 @@ def load_pretrained_model(model_filename):
         "count_mse": count_mse,
         "MSE_BCE": MSE_BCE,
         "mse_bce": MSE_BCE,
+        "MSE_BCE_2": MSE_BCE_2,
         "w_by_sigmoid_normalization": w_by_sigmoid_normalization,
         "MaxPoolingWithArgmax2D": MaxPoolingWithArgmax2D,
         "MaxUnpooling2D": MaxUnpooling2D,
@@ -817,6 +827,7 @@ def evaluate_model(model_filename, test_data):
         "count_mae": count_mae,
         "count_mse": count_mse,
         "MSE_BCE": MSE_BCE,
+        "MSE_BCE_2": MSE_BCE_2,
         "w_by_sigmoid_normalization": w_by_sigmoid_normalization,
         "MaxPoolingWithArgmax2D": MaxPoolingWithArgmax2D,
         "MaxUnpooling2D": MaxUnpooling2D,

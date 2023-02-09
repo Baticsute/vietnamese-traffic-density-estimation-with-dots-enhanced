@@ -34,12 +34,12 @@ VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 BATCH_SIZE = 1
 BATCH_SAMPLE_SIZE = 128
-DATASET_LOOP = 10
+DATASET_LOOP = 5
 DOWN_SAMPLING = 2
 is_multi_outputs = False
 BUFFER_SIZE = 512
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, density_map_folder_name='density_maps')
+dataset_dict = data_loader.load_dataset_paths(dataset_name='trancos_v3', validation_split_size=0.2, density_map_folder_name='density_maps_unspread')
 
 train_input_data = dataset_dict['train']['images']
 train_output_data = dataset_dict['train']['density_maps']
@@ -80,7 +80,7 @@ model.train_model(
     steps_per_epoch=int(math.ceil((1. * train_size) / BATCH_SAMPLE_SIZE)),
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
-    model_checkpoint_filename='model_U-ASD_Net_No_BN_checkpoint',
+    model_checkpoint_filename='model_U-ASD-Net_MSE_BCE_Loss_Trancos_V3_unspread_checkpoint',
     patience=100,
     monitor='val_loss'
 )
