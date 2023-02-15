@@ -39,7 +39,7 @@ DOWN_SAMPLING = 2
 is_multi_outputs = False
 BUFFER_SIZE = 512
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='trancos_v3', validation_split_size=0.2, density_map_folder_name='density_maps')
+dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, density_map_folder_name='density_maps')
 
 train_input_data = dataset_dict['train']['images']
 train_output_data = dataset_dict['train']['density_maps']
@@ -80,7 +80,7 @@ model.train_model(
     steps_per_epoch=int(math.ceil((1. * train_size) / BATCH_SAMPLE_SIZE)),
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
-    model_checkpoint_filename='model_U-ASD-Net_MSE_BCE_Loss_Trancos_V3_spread_checkpoint',
+    model_checkpoint_filename='model_U-ASD-Net_MSE_BCE_Loss_checkpoint',
     patience=100,
     monitor='val_loss'
 )
