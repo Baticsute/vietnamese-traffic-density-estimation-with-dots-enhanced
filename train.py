@@ -39,7 +39,7 @@ DOWN_SAMPLING = 2
 is_multi_outputs = False
 BUFFER_SIZE = 512
 
-dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, density_map_folder_name='density_maps')
+dataset_dict = data_loader.load_dataset_paths(dataset_name='final_data', validation_split_size=0.1, density_map_folder_name='density_maps')
 
 train_input_data = dataset_dict['train']['images']
 train_output_data = dataset_dict['train']['density_maps']
