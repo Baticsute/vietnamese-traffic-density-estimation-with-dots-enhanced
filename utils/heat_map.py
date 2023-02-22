@@ -7,7 +7,7 @@ import scipy.ndimage as ndimage
 
 
 class HeatMap:
-    def __init__(self, image, heat_map, gaussian_std=10):
+    def __init__(self, image, heat_map, heat_map_gt, gaussian_std=10):
         # if image is numpy array
         if isinstance(image, np.ndarray):
             height = image.shape[0]
@@ -25,14 +25,26 @@ class HeatMap:
         # Convert back to numpy
         if np.ndim(heat_map) > 2:
             heat_map = np.squeeze(heat_map, axis=-1)
+        if np.ndim(heat_map_gt) > 2:
+            heat_map_gt = np.squeeze(heat_map_gt, axis=-1)
+
         heatmap_image = Image.fromarray(heat_map * 255)
         heatmap_image_resized = heatmap_image.resize((width, height))
+
+        heatmap_gt_image = Image.fromarray(heat_map_gt * 255)
+        heatmap_gt_image_resized = heatmap_gt_image.resize((width, height))
         if gaussian_std > 0:
             heatmap_image_resized = ndimage.gaussian_filter(heatmap_image_resized,
                                                             sigma=(gaussian_std, gaussian_std),
                                                             order=0)
+            heatmap_gt_image_resized = ndimage.gaussian_filter(heatmap_gt_image_resized,
+                                                            sigma=(gaussian_std, gaussian_std),
+                                                            order=0)
+
         heatmap_image_resized = np.asarray(heatmap_image_resized)
+        heatmap_gt_image_resized = np.asarray(heatmap_gt_image_resized)
         self.heat_map = heatmap_image_resized
+        self.heat_map_gt = heatmap_gt_image_resized
 
     # Plot the figure
     def plot(
@@ -44,14 +56,25 @@ class HeatMap:
             show_colorbar=False,
             width_pad=0,
             figure_size=(10, 20),
-            text=None
+            text=None,
+            text_fontsize='large',
+            text_fontweight='bold',
+            text_color='white'
     ):
 
         # If show_original is True, then subplot first figure as orginal image
         # Set x,y to let the heatmap plot in the second subfigure,
         # otherwise heatmap will plot in the first sub figure
+        plt.figure(figsize=figure_size)
+        axes_title_fontdict = {
+            'fontsize': text_fontsize,
+            'fontweight': text_fontweight,
+            'color': text_color
+        }
+
         if show_original:
-            plt.subplot(1, 2, 1)
+            axes_org_img = plt.subplot(1, 3, 1)
+            axes_org_img.set_title('Image', fontdict=axes_title_fontdict)
             if not show_axis:
                 plt.axis('off')
             plt.imshow(self.image)
@@ -59,21 +82,22 @@ class HeatMap:
         else:
             x, y = 1, 1
 
+        # Plot the ground truth
+        axes_predict_hm = plt.subplot(1, 3, 2)
+        axes_predict_hm.set_title('Ground Truth', fontdict=axes_title_fontdict)
+        if not show_axis:
+            plt.axis('off')
+        plt.imshow(self.image, cmap='gray')
+        plt.imshow(self.heat_map_gt / 255, alpha=transparency, cmap=color_map)
+
         # Plot the heatmap
-        plt.figure(figsize=figure_size)
-        plt.subplot(1, x, y)
+        axes_predict_hm = plt.subplot(1, 3, 3)
+        axes_predict_hm.set_title('Predicted: {}'.format(text), fontdict=axes_title_fontdict)
         if not show_axis:
             plt.axis('off')
         plt.imshow(self.image, cmap='gray')
         plt.imshow(self.heat_map / 255, alpha=transparency, cmap=color_map)
-        if text is not None:
-            box_styles = dict(
-                facecolor='green',
-                alpha=0.5,
-                boxstyle="round",
-                edgecolor='white'
-            )
-            plt.text(20, 20, text, color='white', fontsize='xx-large', fontweight='bold', bbox=box_styles)
+
         if show_colorbar:
             plt.colorbar()
         plt.tight_layout(w_pad=width_pad)
@@ -84,7 +108,8 @@ class HeatMap:
              transparency=0.7, color_map='bwr', width_pad=-10,
              show_axis=False, show_original=False, show_colorbar=False, **kwargs):
         if show_original:
-            plt.subplot(1, 2, 1)
+            axes_org_img = plt.subplot(1, 2, 1)
+            axes_org_img.set_title('Image')
             if not show_axis:
                 plt.axis('off')
             plt.imshow(self.image)
@@ -93,7 +118,8 @@ class HeatMap:
             x, y = 1, 1
 
         # Plot the heatmap
-        plt.subplot(1, x, y)
+        axes_predict_hm = plt.subplot(1, x, y)
+        axes_predict_hm.set_title('Predicted')
         if not show_axis:
             plt.axis('off')
         plt.imshow(self.image)
