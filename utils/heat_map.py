@@ -28,6 +28,9 @@ class HeatMap:
         if np.ndim(heat_map_gt) > 2:
             heat_map_gt = np.squeeze(heat_map_gt, axis=-1)
 
+        self.sum_heatmap = np.round(np.sum(heat_map), 2)
+        self.sum_heatmap_gt = np.round(np.sum(heat_map_gt))
+
         heatmap_image = Image.fromarray(heat_map * 255)
         heatmap_image_resized = heatmap_image.resize((width, height))
 
@@ -83,8 +86,8 @@ class HeatMap:
             x, y = 1, 1
 
         # Plot the ground truth
-        axes_predict_hm = plt.subplot(1, 3, 2)
-        axes_predict_hm.set_title('Ground Truth', fontdict=axes_title_fontdict)
+        axes_gt_hm = plt.subplot(1, 3, 2)
+        axes_gt_hm.set_title('Ground Truth: {}'.format(str(self.sum_heatmap_gt)), fontdict=axes_title_fontdict)
         if not show_axis:
             plt.axis('off')
         plt.imshow(self.image, cmap='gray')
@@ -92,7 +95,7 @@ class HeatMap:
 
         # Plot the heatmap
         axes_predict_hm = plt.subplot(1, 3, 3)
-        axes_predict_hm.set_title('Predicted: {}'.format(text), fontdict=axes_title_fontdict)
+        axes_predict_hm.set_title('Predicted: {}'.format(str(self.sum_heatmap)), fontdict=axes_title_fontdict)
         if not show_axis:
             plt.axis('off')
         plt.imshow(self.image, cmap='gray')
