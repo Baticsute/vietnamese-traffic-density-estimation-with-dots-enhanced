@@ -34,7 +34,7 @@ VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
 BATCH_SIZE = 1
 BATCH_SAMPLE_SIZE = 128
-DATASET_LOOP = 5
+DATASET_LOOP = 10
 DOWN_SAMPLING = 8
 is_multi_outputs = False
 is_regression = True

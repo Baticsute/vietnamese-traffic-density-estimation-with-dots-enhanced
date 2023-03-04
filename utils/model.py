@@ -839,9 +839,9 @@ def train_regression_model_from_freeze_desity_map(model_filename, train_data, va
     density_map_output = model.get_layer(last_layer_name).output
 
     flatten = Flatten(name='flatten')(density_map_output)
-    dense128 = Dense(128, activation='relu', kernel_initializer='he_uniform')(flatten)
-    dense64 = Dense(64, activation='relu', kernel_initializer='he_uniform')(dense128)
-    count_output_flow = Dense(1, activation='linear', name="estimation")(dense64)
+    dense128 = Dense(512, activation='relu', kernel_initializer='he_uniform')(flatten)
+    # dense64 = Dense(64, activation='relu', kernel_initializer='he_uniform')(dense128)
+    count_output_flow = Dense(1, activation='linear', name="estimation")(dense128)
 
     regression_part_model = Model(inputs=model.input, outputs=count_output_flow)
     regression_part_model.summary()
@@ -851,7 +851,7 @@ def train_regression_model_from_freeze_desity_map(model_filename, train_data, va
     regression_part_model.compile(
         optimizer=sgd,
         loss='mean_absolute_error',
-        metrics=['accuracy', 'MAE', 'MSE']
+        metrics=['MAE', 'MSE']
     )
 
     regression_part_model.fit(
@@ -865,6 +865,11 @@ def train_regression_model_from_freeze_desity_map(model_filename, train_data, va
         use_multiprocessing=True,
         workers=16
     )
+
+    now = datetime.now()
+    string_date_time = now.strftime('%m_%d_%Y_%H%M%S')
+    model_save_file_name = './model_checkpoints/' + model_checkpoint_filename + f'_{string_date_time}_last_epoch' + '.h5'
+    model.save(model_save_file_name)
 
 def evaluate_model(model_filename, test_data):
     """
