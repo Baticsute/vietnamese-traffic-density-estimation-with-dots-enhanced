@@ -369,12 +369,16 @@ def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, is_
     return dataset_dict
 
 
-def gen_pre_process_func(downsampling=8, method='nearest', is_multi_outputs=False):
+def gen_pre_process_func(downsampling=8, method='nearest', is_multi_outputs=False, is_regression=False):
     batch_add = 1
     @tf.function
     def _pre_process_(img, gth):
 
         before_resize = tf.reduce_sum(gth)
+
+        if is_regression:
+            return img, tf.expand_dims(before_resize, axis=0)
+
         if downsampling > 1:
 
             gth_shape = tf.shape(gth)
@@ -401,7 +405,8 @@ def load_dataset(input_paths=[], output_paths=[], output_type='density_maps',
                  batch_size=1, buffer_size=256,
                  shuffle=False,
                  downsampling_size=8, resize_method=tf.image.ResizeMethod.BILINEAR,
-                 is_multi_outputs=False
+                 is_multi_outputs=False,
+                 is_regression=False
                  ):
     data_size = len(input_paths)
     input_data = tf.data.Dataset.from_tensor_slices(input_paths)
@@ -427,7 +432,7 @@ def load_dataset(input_paths=[], output_paths=[], output_type='density_maps',
         dataset = dataset.batch(batch_size)
 
     dataset = dataset.map(
-        gen_pre_process_func(downsampling=downsampling_size, method=resize_method, is_multi_outputs=is_multi_outputs)
+        gen_pre_process_func(downsampling=downsampling_size, method=resize_method, is_multi_outputs=is_multi_outputs, is_regression=is_regression)
     )
 
     return dataset, data_size

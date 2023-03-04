@@ -811,6 +811,60 @@ def load_pretrained_model(model_filename):
 
     return model
 
+def train_regression_model_from_freeze_desity_map(model_filename, train_data, valid_data=None,
+                                                  n_epochs=100, steps_per_epoch=None, validation_steps=None,
+                                                  model_checkpoint_filename='model_unet_checkpoint', patience=10,
+                                                  monitor='val_loss', last_layer_name='density_map'):
+    model_checkpoint = get_model_checkpoint(model_checkpoint_filename=model_checkpoint_filename, monitor=monitor)
+    early_stopping = get_early_stopping(patience=patience, monitor=monitor)
+    tensorboards = get_model_logging()
+
+    custom_objects = {
+        "loss_euclidean_distance": loss_euclidean_distance,
+        "density_mae": density_mae,
+        "density_mse": density_mse,
+        "count_mae": count_mae,
+        "count_mse": count_mse,
+        "MSE_BCE": MSE_BCE,
+        "mse_bce": MSE_BCE,
+        "MSE_BCE_2": MSE_BCE_2,
+        "w_by_sigmoid_normalization": w_by_sigmoid_normalization,
+        "MaxPoolingWithArgmax2D": MaxPoolingWithArgmax2D,
+        "MaxUnpooling2D": MaxUnpooling2D,
+    }
+
+    model = tf.keras.models.load_model(model_filename, custom_objects=custom_objects)
+    model.trainable = False
+
+    density_map_output = model.get_layer(last_layer_name).output
+
+    flatten = Flatten(name='flatten')(density_map_output)
+    dense128 = Dense(128, activation='relu', kernel_initializer='he_uniform')(flatten)
+    dense64 = Dense(64, activation='relu', kernel_initializer='he_uniform')(dense128)
+    count_output_flow = Dense(1, activation='linear', name="estimation")(dense64)
+
+    regression_part_model = Model(inputs=model.input, outputs=count_output_flow)
+    regression_part_model.summary()
+
+    sgd = SGD(lr=0.01, momentum=0.9)
+    adam_optimizer = Adam(lr=1e-6)
+    regression_part_model.compile(
+        optimizer=sgd,
+        loss='mean_absolute_error',
+        metrics=['accuracy', 'MAE', 'MSE']
+    )
+
+    regression_part_model.fit(
+        train_data,
+        validation_data=valid_data,
+        epochs=n_epochs,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        verbose=0,
+        callbacks=[early_stopping, model_checkpoint, tensorboards, TqdmCallback(verbose=2)],
+        use_multiprocessing=True,
+        workers=16
+    )
 
 def evaluate_model(model_filename, test_data):
     """
