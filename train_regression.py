@@ -84,6 +84,6 @@ model.train_regression_model_from_freeze_desity_map(
     validation_steps=val_size,
     n_epochs=BATCH_SAMPLE_SIZE * DATASET_LOOP,
     model_checkpoint_filename='model_CSR-Net-Regression-Freeze-Desity-Map_checkpoint',
-    patience=100,
+    patience=200,
     monitor='val_loss'
 )

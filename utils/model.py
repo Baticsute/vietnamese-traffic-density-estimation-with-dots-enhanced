@@ -839,7 +839,7 @@ def train_regression_model_from_freeze_desity_map(model_filename, train_data, va
     density_map_output = model.get_layer(last_layer_name).output
 
     flatten = Flatten(name='flatten')(density_map_output)
-    dense128 = Dense(512, activation='relu', kernel_initializer='he_uniform')(flatten)
+    dense128 = Dense(1024, activation='relu', kernel_initializer='he_uniform')(flatten)
     # dense64 = Dense(64, activation='relu', kernel_initializer='he_uniform')(dense128)
     count_output_flow = Dense(1, activation='linear', name="estimation")(dense128)
 
