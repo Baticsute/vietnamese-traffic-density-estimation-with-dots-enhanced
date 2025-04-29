@@ -138,11 +138,11 @@ def generate_density_maps_from_groundtruths(
     sys.stdout.flush()
     train_mask_path_string = path + '/train/masks/'
     test_mask_path_string = path + '/test/masks/'
-    validation_mask_path_string = path + '/validation/masks/'
+    validation_mask_path_string = path + '/val/masks/'
 
     train_dm_path_string = path + '/train/density_maps/'
     test_dm_path_string = path + '/test/density_maps/'
-    validation_dm_path_string = path + '/validation/density_maps/'
+    validation_dm_path_string = path + '/val/density_maps/'
 
     if not os.path.exists(train_dm_path_string):
         os.makedirs(train_dm_path_string, exist_ok=True)
