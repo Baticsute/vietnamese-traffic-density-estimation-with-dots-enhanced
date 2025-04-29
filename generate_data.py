@@ -16,4 +16,4 @@ TRAIN_PATH_MASKS = FINAL_DATASET_PATH + '/train/masks/'
 TEST_PATH_MASKS = FINAL_DATASET_PATH + '/test/masks/'
 VALI_PATH_MASKS = FINAL_DATASET_PATH + '/validation/masks/'
 
-data_loader.generate_density_maps_from_groundtruths('kiengiang_dataset', is_dot_illusion=True, gap_spaces=(15,0), fixed_sigma=10)
+data_loader.generate_density_maps_from_groundtruths('kiengiang_dataset', is_dot_illusion=True, gap_spaces=(15,5), fixed_sigma=5)
