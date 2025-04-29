@@ -303,7 +303,7 @@ def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, is_
     is_split_from_train = False
     if is_exist_validation:
         is_split_from_train = False
-        validation_image_path_string = path + '/validation/images/'
+        validation_image_path_string = path + '/val/images/'
 
     train_image_file_ids = next(os.walk(train_image_path_string))[2]
     validation_image_file_ids = []
@@ -329,7 +329,7 @@ def load_dataset_paths(dataset_name='final_data', validation_split_size=0.2, is_
     for id in validation_image_file_ids:
         sub_path = '/train/'
         if not is_split_from_train:
-            sub_path = '/validation/'
+            sub_path = '/val/'
 
         file_path = os.path.join(path + sub_path + 'images/', id)
         label_file_path = os.path.join(path + sub_path + 'masks/', os.path.splitext(id)[0] + '.png')
