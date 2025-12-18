@@ -4,8 +4,7 @@
 
 ## 📊 Dataset
 
-🔗 **Dataset download:**  
-👉 **[Vietnamese Traffic Dataset](https://drive.google.com/drive/folders/13-qAzGoCnae3f3Mzp1hwYTUCjg2y7ME_?usp=sharing)**
+🔗 **Dataset download:**  **[Vietnamese Traffic Dataset](https://drive.google.com/drive/folders/13-qAzGoCnae3f3Mzp1hwYTUCjg2y7ME_?usp=sharing)**
 
 ---
 
